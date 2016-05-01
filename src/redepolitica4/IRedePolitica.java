@@ -5,6 +5,7 @@
 package redepolitica4;
 
 import gnu.trove.map.hash.THashMap;
+import gnu.trove.map.hash.TIntObjectHashMap;
 import irational.IRational;
 import java.util.HashMap;
 
@@ -29,7 +30,7 @@ public interface IRedePolitica
 
     Candidato getCandidato(int numero);
 
-    THashMap<Integer, Candidato> getEleitos();
+    TIntObjectHashMap<Candidato> getEleitos();
 
     void preparaCandidatos();
 

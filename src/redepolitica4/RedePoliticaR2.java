@@ -1,6 +1,8 @@
 package redepolitica4;
 
 import gnu.trove.map.hash.THashMap;
+import gnu.trove.map.hash.TIntObjectHashMap;
+import gnu.trove.set.hash.THashSet;
 import irational.IRational;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -16,10 +18,10 @@ public class RedePoliticaR2 implements IRedePolitica
 {
     IRational votosValidosOriginais;
 //    IRational votosValidosCorrentes;
-    THashMap<Integer,Candidato> candidatos;
-    THashMap<Integer,Candidato> remanescentes;
-    THashMap<Integer,Candidato> eleitos;
-    THashMap<Integer,Candidato> eliminados;
+    TIntObjectHashMap<Candidato> candidatos;
+    TIntObjectHashMap<Candidato> remanescentes;
+    TIntObjectHashMap<Candidato> eleitos;
+    TIntObjectHashMap<Candidato> eliminados;
     Candidato descarte;    
     IRational quocienteEleitoral;
     IRational numeroDeCadeiras;
@@ -30,7 +32,7 @@ public class RedePoliticaR2 implements IRedePolitica
     public String toString()
     {
         StringBuffer sb = new StringBuffer();
-        for (Candidato c:candidatos.values())        
+        for (Candidato c:candidatos.valueCollection())        
             sb.append(c.toStringWithLinks());
         sb.append(descarte.toStringWithLinks());
         return sb.toString();
@@ -41,7 +43,7 @@ public class RedePoliticaR2 implements IRedePolitica
         RedePoliticaR2 rp = (RedePoliticaR2)o;
         if (rp.candidatos.size()!=candidatos.size())
             return false;
-        for (Candidato c:candidatos.values())
+        for (Candidato c:candidatos.valueCollection())
         {
             Candidato oc = rp.getCandidato(c.numero);
             if (oc==null)
@@ -52,23 +54,23 @@ public class RedePoliticaR2 implements IRedePolitica
         return descarte.equals(rp.descarte);
     }        
     
-    public THashMap<Integer, Candidato> getEleitos()
+    public TIntObjectHashMap<Candidato> getEleitos()
     {
         return eleitos;
     }
-    public RedePoliticaR2(IRational.Factory numberFactory,String name)
+    public RedePoliticaR2(IRational.Factory numberFactory,String name,int numTh)
     {
         this.numberFactory = numberFactory;
         zero = numberFactory.valueOf(0,1);
         one = numberFactory.valueOf(1,1);
-        remanescentes = new THashMap();
-        eleitos = new THashMap();
-        eliminados = new THashMap();        
+        remanescentes = new TIntObjectHashMap();
+        eleitos = new TIntObjectHashMap();
+        eliminados = new TIntObjectHashMap();        
         votosValidosOriginais = zero;
-        candidatos =  new THashMap();
+        candidatos =  new TIntObjectHashMap();
         descarte = new Candidato(0,false);
         descarte.defineVotos(numberFactory.valueOf(0, 1));
-        numTh = Runtime.getRuntime().availableProcessors();
+        this.numTh = numTh;//Runtime.getRuntime().availableProcessors();
         for (int t=0; t<numTh; t++)
             new Thread(new Remover(t),"DoRemoves "+name+" "+t).start();        
     }        
@@ -122,7 +124,7 @@ public class RedePoliticaR2 implements IRedePolitica
         if (!votosValidosCorrentes.equals(qnc))
             throw new RuntimeException("Inconsistência no coeficiente eleitoral");
         IRational  tVotosValidosCorrentes = zero;        
-        for (Candidato c: candidatos.values())
+        for (Candidato c: candidatos.valueCollection())
         {    
             c.checa(quocienteEleitoral,numberFactory,hasJustElected);
             tVotosValidosCorrentes = tVotosValidosCorrentes.plus(c.votosCorrentes);
@@ -133,7 +135,7 @@ public class RedePoliticaR2 implements IRedePolitica
     
     public void preparaCandidatos()
     {
-        for (Candidato c:candidatos.values())
+        for (Candidato c:candidatos.valueCollection())
             c.preparaParaInicioDaApuracao(descarte,numberFactory);
         descarte.preparaParaInicioDaApuracaoDescarte(numberFactory);
     }        
@@ -142,11 +144,11 @@ public class RedePoliticaR2 implements IRedePolitica
     {
         votosValidosOriginais = zero;
         preparaCandidatos();
-        for (Candidato c:candidatos.values())
+        for (Candidato c:candidatos.valueCollection())
             votosValidosOriginais = votosValidosOriginais.plus(c.votosProprios);   
-        remanescentes = new THashMap(candidatos);
-        eleitos = new THashMap();
-        eliminados = new THashMap();
+        remanescentes = new TIntObjectHashMap(candidatos);
+        eleitos = new TIntObjectHashMap();
+        eliminados = new TIntObjectHashMap();
         quocienteEleitoral =  votosValidosOriginais.divide(numeroDeCadeiras);        
     }
             
@@ -173,7 +175,7 @@ public class RedePoliticaR2 implements IRedePolitica
     {
         boolean last = remanescentes.size() == 1; // para compensar erros de arredondamento
         HashMap<Integer,Candidato> recemEleitos = new HashMap();
-        for (Iterator<Candidato> i=remanescentes.values().iterator();i.hasNext(); )
+        for (Iterator<Candidato> i=remanescentes.valueCollection().iterator();i.hasNext(); )
         {
             Candidato c = i.next();
             if (c.votosCorrentes.compareTo(quocienteEleitoral) >= 0 || last)
@@ -226,7 +228,7 @@ public class RedePoliticaR2 implements IRedePolitica
 
     private void eliminaBandeirasEAtualizaCoeficiente()
     {
-        ArrayList<Candidato> cands = new ArrayList(remanescentes.values()); 
+        ArrayList<Candidato> cands = new ArrayList(remanescentes.valueCollection()); 
         ArrayList<Candidato> eliminados = new ArrayList(); 
         for (Candidato c:cands)        
             if (c.isBandeira)
@@ -237,7 +239,7 @@ public class RedePoliticaR2 implements IRedePolitica
     private void eliminaUltimoRepassaVotosEAtualizaCoeficiente()
     {
         Candidato eliminado = null;
-        for (Candidato c:remanescentes.values())        
+        for (Candidato c:remanescentes.valueCollection())        
         {
             if (eliminado == null || c.votosCorrentes.compareTo(eliminado.votosCorrentes) < 0)
                 eliminado = c;
@@ -249,7 +251,7 @@ public class RedePoliticaR2 implements IRedePolitica
     
     private void checaAusencia(Candidato c)
     {
-        for (Candidato cc:candidatos.values())
+        for (Candidato cc:candidatos.valueCollection())
         {
             if (cc.vizinhosCorrentes!=null && cc.vizinhosCorrentes.containsKey(c.getNumero()))
                 throw new RuntimeException("Candidato já removido presente");
@@ -258,7 +260,7 @@ public class RedePoliticaR2 implements IRedePolitica
     
     private void checaContraAusencia(Candidato c)
     {
-        for (Candidato cc:candidatos.values())
+        for (Candidato cc:candidatos.valueCollection())
             if (cc.contraVizinhosCorrentes!=null && cc.contraVizinhosCorrentes.containsKey(c.getNumero()))
                 throw new RuntimeException("Candidato já removido presente (contra)");
     }        
@@ -291,7 +293,7 @@ public class RedePoliticaR2 implements IRedePolitica
             throw new RuntimeException("c==null");
         if (c.contraVizinhosCorrentes==null)
             throw new RuntimeException("c.contraVizinhosCorrentes==null");
-        HashSet<Candidato> contraVizinhos = new HashSet(c.contraVizinhosCorrentes.values());
+        THashSet<Candidato> contraVizinhos = new THashSet(c.contraVizinhosCorrentes.valueCollection());
 
         removeEntries = new ArrayList[numTh];
         for (int t=0; t<numTh; t++)
@@ -321,7 +323,7 @@ public class RedePoliticaR2 implements IRedePolitica
            removeEntries[t] = new ArrayList();
         
         p = 0;
-        for (Relacao r:c.vizinhosCorrentes.values())
+        for (Relacao r:c.vizinhosCorrentes.valueCollection())
         {
             Candidato vizinho = r.relacionado;
             if (vizinho.status!=Candidato.ST_ELIMINADO) 
@@ -438,10 +440,10 @@ public class RedePoliticaR2 implements IRedePolitica
             
             candidatoDeOndeRemover.vizinhosCorrentes.remove(candidatoASerRemovido.numero);
                             
-            for (Relacao r:candidatoDeOndeRemover.vizinhosCorrentes.values())
+            for (Relacao r:candidatoDeOndeRemover.vizinhosCorrentes.valueCollection())
                 r.percentualRepasse = r.percentualRepasse.divide(percentualRestandeDeIdaEVolta);   
             
-            for (Relacao r:candidatoASerRemovido.vizinhosCorrentes.values())
+            for (Relacao r:candidatoASerRemovido.vizinhosCorrentes.valueCollection())
             {
                 if (r.relacionado==candidatoDeOndeRemover)
                     continue;
@@ -476,7 +478,7 @@ public class RedePoliticaR2 implements IRedePolitica
             throw new RuntimeException("Inconsistência nos conjuntos de contravizinhos");
 
                 
-        for (Candidato contraVizinho:candidatoASerRemovido.contraVizinhosCorrentes.values())            
+        for (Candidato contraVizinho:candidatoASerRemovido.contraVizinhosCorrentes.valueCollection())            
            if (contraVizinho != candidatoDeOndeRemover)           
                candidatoDeOndeRemover.contraVizinhosCorrentes.put(contraVizinho.numero, contraVizinho);
 
@@ -493,26 +495,26 @@ public class RedePoliticaR2 implements IRedePolitica
     
     class DadosTemporariosRepasseEstruturaOriginal
     {
-          HashMap<Integer,Candidato> candidatos;
-          HashMap<Integer,Candidato> candidatosFonte;
+          TIntObjectHashMap<Candidato> candidatos;
+          TIntObjectHashMap<Candidato> candidatosFonte;
           IRational quocienteEleitoral;           
           Candidato descarte;
           DadosTemporariosRepasseEstruturaOriginal()
           {              
             quocienteEleitoral = RedePoliticaR2.this.quocienteEleitoral;  
             descarte = new Candidato(RedePoliticaR2.this.descarte);
-            candidatos = new HashMap();
-            for (Candidato c:RedePoliticaR2.this.candidatos.values())                
+            candidatos = new TIntObjectHashMap();
+            for (Candidato c:RedePoliticaR2.this.candidatos.valueCollection())                
                candidatos.put(c.numero,new Candidato(c));              
-            for (Candidato c:candidatos.values())
+            for (Candidato c:candidatos.valueCollection())
             {
-                HashMap<Integer,Relacao> vizinhosOriginais = new HashMap();
-                for (Relacao r:c.vizinhosOriginais.values())
+                TIntObjectHashMap<Relacao> vizinhosOriginais = new TIntObjectHashMap();
+                for (Relacao r:c.vizinhosOriginais.valueCollection())
                     vizinhosOriginais.put(r.relacionado.numero,new Relacao(candidatos.get(r.relacionado.numero),r.percentualRepasse));
                 c.vizinhosOriginais = vizinhosOriginais;
             }    
-            candidatosFonte = new HashMap();
-            for (Candidato c:candidatos.values())
+            candidatosFonte = new TIntObjectHashMap();
+            for (Candidato c:candidatos.valueCollection())
                 if (
                         c.status==Candidato.ST_ELEITO || 
                         c.status==Candidato.ST_ELIMINADO  ||
@@ -555,7 +557,7 @@ public class RedePoliticaR2 implements IRedePolitica
             System.out.println("TOTMAIN = "+totMain+" TOTCOPY "+totCopy);
 */            
             for (int t=0; t<1024; t++)
-                for (Candidato c:dt.candidatosFonte.values())
+                for (Candidato c:dt.candidatosFonte.valueCollection())
                     if (c.status!=Candidato.ST_REMANESCENTE)
                     {
                         IRational vp = c.status==Candidato.ST_ELEITO ? c.votosCorrentes.minus(dt.quocienteEleitoral) : c.votosCorrentes;
@@ -564,7 +566,7 @@ public class RedePoliticaR2 implements IRedePolitica
                         {   
                             if (!c.vizinhosOriginais.isEmpty())
                                 c.votosCorrentes = c.votosCorrentes.minus(vp);
-                            for (Relacao r:c.vizinhosOriginais.values())
+                            for (Relacao r:c.vizinhosOriginais.valueCollection())
                             {
                                 //if (r.relacionado.numero==28)
                                 //    System.out.println("28 "+r.relacionado.votosCorrentes+" "+c.numero+" "+vp.times(r.percentualRepasse));
@@ -575,7 +577,7 @@ public class RedePoliticaR2 implements IRedePolitica
                                 System.out.println("Votos brotaram");
                         }    
                     }    
-            for (Candidato c:dt.candidatosFonte.values())
+            for (Candidato c:dt.candidatosFonte.valueCollection())
                 if (c.status!=Candidato.ST_REMANESCENTE)
                 {
                     IRational vp = c.status==Candidato.ST_ELEITO ? c.votosCorrentes.minus(dt.quocienteEleitoral) : c.votosCorrentes;
@@ -593,7 +595,7 @@ public class RedePoliticaR2 implements IRedePolitica
         IRational totDif =  zero;            
         IRational totMain = zero;
         IRational totCopy = zero;
-        for (Candidato c:dt.candidatos.values())
+        for (Candidato c:dt.candidatos.valueCollection())
         {
             Candidato cc = candidatos.get(c.numero);
             totMain = totMain.plus(cc.votosCorrentes);
@@ -633,7 +635,7 @@ public class RedePoliticaR2 implements IRedePolitica
             IRational vp = v.times(p);
             sumVP = sumVP.plus(vp);
         }
-        for (Candidato c:eleitos.values())
+        for (Candidato c:eleitos.valueCollection())
         {    
             IRational v = c.votosCorrentes;
             Relacao rDescarte = c.vizinhosCorrentes.get(descarte.numero);
@@ -651,14 +653,14 @@ public class RedePoliticaR2 implements IRedePolitica
         
         HashSet<Candidato> candidatosComVotosARepassar = new HashSet();
         candidatosComVotosARepassar.addAll(recemEliminados);
-        for (Candidato c:eleitos.values())
+        for (Candidato c:eleitos.valueCollection())
            if (c.votosCorrentes.compareTo(quocienteEleitoral)>=0) 
               candidatosComVotosARepassar.add(c);
         
         for (Candidato c:candidatosComVotosARepassar) 
         {
             IRational votosRepassaveis =  (c.status==Candidato.ST_ELIMINADO) ? c.votosCorrentes : c.votosCorrentes.minus(quocienteEleitoral);
-            for (Relacao r:c.vizinhosCorrentes.values())
+            for (Relacao r:c.vizinhosCorrentes.valueCollection())
             {    
                     r.relacionado.votosCorrentes = r.relacionado.votosCorrentes.plus(votosRepassaveis.times(r.percentualRepasse));
                     if (r.relacionado.status!=Candidato.ST_REMANESCENTE && r.relacionado.status!=Candidato.ST_DESCARTE)

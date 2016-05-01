@@ -26,11 +26,11 @@ import java.util.Random;
 public class TestesCompleta
 {
     
-    public IRedePolitica montaRede()
+    public IRedePolitica montaRede(int n,int numTh)
     {   
-        int n = 5000;
+        //int n = 1750;
         IRational.Factory rationalFactory = new FakeRational.Factory();
-        IRedePolitica rp = new RedePoliticaR2(rationalFactory,"Rede");
+        IRedePolitica rp = new RedePoliticaR2(rationalFactory,"Rede",numTh);
         for (int t=0; t<n; t++)   
             rp.addCandidato(t);
         
@@ -61,11 +61,14 @@ public class TestesCompleta
     }        
     public static void main(String argv[])
     {
+        long iniTime = System.currentTimeMillis();
         TestesCompleta evp = new TestesCompleta();
-        IRedePolitica rp = evp.montaRede();
+        IRedePolitica rp = evp.montaRede(Integer.parseInt(argv[0]),Integer.parseInt(argv[1]));
         rp.defineCadeiras(70);
         rp.realizaApuracao();     
         rp.close();
+        long endTime =  System.currentTimeMillis();
+        System.out.println("Tempo total "+argv[0]+" "+argv[1]+" "+(endTime-iniTime)/1000);
     }        
     
 }

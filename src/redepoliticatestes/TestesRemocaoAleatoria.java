@@ -25,13 +25,13 @@ import java.util.Random;
 public class TestesRemocaoAleatoria
 {
     
-    public IRedePolitica montaRede(int seed,String name)
+    public IRedePolitica montaRede(int seed,String name,int numTh)
     {   
         int n = 100;
         int nr = 10;
         Random r = new Random(seed);
         IRational.Factory rationalFactory = new TrueRational.Factory();
-        IRedePolitica rp = new RedePoliticaR2(rationalFactory,"Rede "+name);
+        IRedePolitica rp = new RedePoliticaR2(rationalFactory,"Rede "+name,numTh);
         for (int t=1; t<=n; t++)   
             rp.addCandidato(t);
         
@@ -91,8 +91,8 @@ public class TestesRemocaoAleatoria
         TestesRemocaoAleatoria evp = new TestesRemocaoAleatoria();
         Random r = new Random(0);
         int seed = r.nextInt();
-        IRedePolitica rp1 = evp.montaRede(seed,"0");
-        IRedePolitica rp2 = evp.montaRede(seed,"1");
+        IRedePolitica rp1 = evp.montaRede(seed,"0",Integer.parseInt(argv[1]));
+        IRedePolitica rp2 = evp.montaRede(seed,"1",Integer.parseInt(argv[1]));
         int rem[] = getRandomInts(100,96,r); 
                 //{ 3,4,5,6,7,8,9,10,11,12,50,51,52,53,54,55 };         
         evp.removeAtRandom(rp1,rem,r);

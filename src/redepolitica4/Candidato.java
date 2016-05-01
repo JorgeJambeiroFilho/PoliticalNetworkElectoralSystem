@@ -4,6 +4,7 @@
  */
 package redepolitica4;
 
+import gnu.trove.map.hash.TIntObjectHashMap;
 import irational.IRational;
 import java.util.HashMap;
 
@@ -22,10 +23,10 @@ public class Candidato
     int status;
     IRational votosProprios;
     IRational votosCorrentes;
-    HashMap<Integer, Relacao> vizinhosOriginais;
-    HashMap<Integer, Relacao> vizinhosCorrentes;
-    HashMap<Integer, Candidato> contraVizinhosOriginais;
-    HashMap<Integer, Candidato> contraVizinhosCorrentes;
+    TIntObjectHashMap<Relacao> vizinhosOriginais;
+    TIntObjectHashMap<Relacao> vizinhosCorrentes;
+    TIntObjectHashMap<Candidato> contraVizinhosOriginais;
+    TIntObjectHashMap<Candidato> contraVizinhosCorrentes;
 //    HashMap<Integer, Candidato> contraVizinhosTemporarios;
     IRational votosNaDefinicao;
     boolean isBandeira;
@@ -45,12 +46,12 @@ public class Candidato
         status = c.status;
         votosProprios = c.votosProprios;
         votosCorrentes = c.votosCorrentes;
-        vizinhosOriginais = new HashMap(c.vizinhosOriginais);        
+        vizinhosOriginais = new TIntObjectHashMap(c.vizinhosOriginais);        
         if (vizinhosCorrentes!=null)
-           vizinhosCorrentes = new HashMap(c.vizinhosCorrentes);
-        contraVizinhosOriginais = new HashMap(c.contraVizinhosOriginais);
+           vizinhosCorrentes = new TIntObjectHashMap(c.vizinhosCorrentes);
+        contraVizinhosOriginais = new TIntObjectHashMap(c.contraVizinhosOriginais);
         if (c.contraVizinhosCorrentes!=null)
-            contraVizinhosCorrentes = new HashMap(c.contraVizinhosCorrentes);
+            contraVizinhosCorrentes = new TIntObjectHashMap(c.contraVizinhosCorrentes);
         votosNaDefinicao = c.votosNaDefinicao;
         isBandeira = c.isBandeira;                        
     }
@@ -59,8 +60,8 @@ public class Candidato
     {
         this.numero = numero;
         this.isBandeira = isBandeira;
-        vizinhosOriginais = new HashMap();
-        contraVizinhosOriginais = new HashMap();
+        vizinhosOriginais = new TIntObjectHashMap();
+        contraVizinhosOriginais = new TIntObjectHashMap();
     }
 
     void defineVotos(IRational votosProprios)
@@ -82,19 +83,19 @@ public class Candidato
     void preparaParaInicioDaApuracao(Candidato descarte,IRational.Factory numberFactory)
     {
         status = ST_REMANESCENTE;
-        vizinhosCorrentes = new HashMap();
-        for (Relacao r:vizinhosOriginais.values())
+        vizinhosCorrentes = new TIntObjectHashMap();
+        for (Relacao r:vizinhosOriginais.valueCollection())
             vizinhosCorrentes.put(r.relacionado.numero,new Relacao(r));
         if (descarte!=null && vizinhosOriginais.isEmpty())
              vizinhosCorrentes.put(descarte.numero, new Relacao(descarte,numberFactory.valueOf(1, 1)));
-        contraVizinhosCorrentes = new HashMap(contraVizinhosOriginais);
+        contraVizinhosCorrentes = new TIntObjectHashMap(contraVizinhosOriginais);
         
     }
     void preparaParaInicioDaApuracaoDescarte(IRational.Factory numberFactory)
     {
         //preparaParaInicioDaApuracao(null,numberFactory);
         status = ST_DESCARTE;        
-        vizinhosCorrentes = new HashMap();
+        vizinhosCorrentes = new TIntObjectHashMap();
     }
     
     public int getNumero()
@@ -117,22 +118,22 @@ public class Candidato
         return votosCorrentes;
     }
 
-    public HashMap<Integer, Relacao> getVizinhosOriginais()
+    public TIntObjectHashMap<Relacao> getVizinhosOriginais()
     {
         return vizinhosOriginais;
     }
 
-    public HashMap<Integer, Relacao> getVizinhosCorrentes()
+    public TIntObjectHashMap<Relacao> getVizinhosCorrentes()
     {
         return vizinhosCorrentes;
     }
 
-    public HashMap<Integer, Candidato> getContraVizinhosOriginais()
+    public TIntObjectHashMap<Candidato> getContraVizinhosOriginais()
     {
         return contraVizinhosOriginais;
     }
 
-    public HashMap<Integer, Candidato> getContraVizinhosCorrentes()
+    public TIntObjectHashMap<Candidato> getContraVizinhosCorrentes()
     {
         return contraVizinhosCorrentes;
     }
@@ -161,7 +162,7 @@ public class Candidato
         IRational sum = numberFactory.valueOf(0, 1);
         if (vizinhosCorrentes != null)
         {
-            for (Relacao r : vizinhosCorrentes.values())
+            for (Relacao r : vizinhosCorrentes.valueCollection())
             {
                 sum = sum.plus(r.percentualRepasse);
                 if (r.relacionado == this)
@@ -180,7 +181,7 @@ public class Candidato
         }
         if (contraVizinhosCorrentes != null)
         {
-            for (Candidato c : contraVizinhosCorrentes.values())
+            for (Candidato c : contraVizinhosCorrentes.valueCollection())
             {
                 if (c.vizinhosCorrentes != null && !c.vizinhosCorrentes.containsKey(numero))
                 {
@@ -200,7 +201,7 @@ public class Candidato
     {
         StringBuffer sb = new StringBuffer();
         sb.append("" + numero + "\n");
-        for (Relacao r : vizinhosCorrentes.values())
+        for (Relacao r : vizinhosCorrentes.valueCollection())
         {
             sb.append("    " + r.relacionado.numero + "       " + r.percentualRepasse + "\n");
         }
@@ -230,7 +231,7 @@ public class Candidato
         {
             return false;
         }
-        for (Relacao r : vizinhosCorrentes.values())
+        for (Relacao r : vizinhosCorrentes.valueCollection())
         {
             Relacao or = c.vizinhosCorrentes.get(r.relacionado.numero);
             if (or == null)

@@ -10,6 +10,7 @@ import irational.TrueRational;
 import irational.IRational;
 import deputados2012.DadosCandidatoEleicaoPassada;
 import gnu.trove.map.hash.THashMap;
+import gnu.trove.map.hash.TIntObjectHashMap;
 import irational.FakeRational;
 import java.io.BufferedReader;
 import java.io.File;
@@ -28,7 +29,7 @@ import redepolitica4.Candidato;
 public class AplicaRedeAEleicaoRealizadaViaPartidos
 {
     IRational.Factory rationalFactory = new FakeRational.Factory();
-    public IRedePolitica montaRede(List<DadosCandidatoEleicaoPassada> cands)
+    public IRedePolitica montaRede(List<DadosCandidatoEleicaoPassada> cands,int numTh)
     {   
         //List<DadosCandidatoEleicaoPassada> cands = new ArrayList();
         //for (DadosCandidatoEleicaoPassada cand:cands1)
@@ -38,7 +39,7 @@ public class AplicaRedeAEleicaoRealizadaViaPartidos
         int numeroDeCadeiras = 0;
         double validos = 0;
         HashMap<String,Integer> coligNumCand = new HashMap();
-        IRedePolitica rp = new RedePoliticaR2(rationalFactory,"Rede Partidos");
+        IRedePolitica rp = new RedePoliticaR2(rationalFactory,"Rede Partidos",numTh);
         for (DadosCandidatoEleicaoPassada c:cands)   
         {    
             if (c.numero==0)
@@ -98,7 +99,7 @@ public class AplicaRedeAEleicaoRealizadaViaPartidos
     }        
     
         
-    void compara(THashMap<Integer,Candidato> eleitos,List<DadosCandidatoEleicaoPassada> cands)
+    void compara(TIntObjectHashMap<Candidato> eleitos,List<DadosCandidatoEleicaoPassada> cands)
     {
         for (DadosCandidatoEleicaoPassada c:cands)
         {
@@ -130,9 +131,9 @@ public class AplicaRedeAEleicaoRealizadaViaPartidos
     {
         AplicaRedeAEleicaoRealizadaViaPartidos evp = new AplicaRedeAEleicaoRealizadaViaPartidos();
         List<DadosCandidatoEleicaoPassada> cands = DadosCandidatoEleicaoPassada.leRecurso("deputados_federais_sp_2012_2.csv");
-        IRedePolitica rp = evp.montaRede(cands);
+        IRedePolitica rp = evp.montaRede(cands,Integer.parseInt(argv[1]));
         rp.realizaApuracao();
-        THashMap<Integer,Candidato> eleitos = rp.getEleitos();
+        TIntObjectHashMap<Candidato> eleitos = rp.getEleitos();
         evp.compara(eleitos,cands);
     }        
     

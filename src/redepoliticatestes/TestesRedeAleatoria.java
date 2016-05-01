@@ -26,13 +26,13 @@ import java.util.Random;
 public class TestesRedeAleatoria
 {
     
-    public IRedePolitica montaRede(int seed,String name)
+    public IRedePolitica montaRede(int seed,String name,int numTh)
     {   
         int n = 500;
         int nr = 10;
         Random r = new Random(seed);
         IRational.Factory rationalFactory = new FakeRational.Factory();
-        IRedePolitica rp = new RedePoliticaR2(rationalFactory,"Rede "+name);
+        IRedePolitica rp = new RedePoliticaR2(rationalFactory,"Rede "+name,numTh);
         for (int t=1; t<=n; t++)   
             rp.addCandidato(t);
         
@@ -79,7 +79,7 @@ public class TestesRedeAleatoria
         TestesRedeAleatoria evp = new TestesRedeAleatoria();
         Random r = new Random(0);
         int seed = r.nextInt();
-        IRedePolitica rp1 = evp.montaRede(seed,"0");
+        IRedePolitica rp1 = evp.montaRede(seed,"0",Integer.parseInt(argv[1]));
         rp1.realizaApuracao();
         rp1.close();
     }        
