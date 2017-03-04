@@ -1,4 +1,4 @@
-package politicalnetwork.core;
+package politicalnetwork.testimplementation;
 
 import gnu.trove.map.hash.THashMap;
 import gnu.trove.map.hash.TIntObjectHashMap;
@@ -29,6 +29,46 @@ public class PoliticalNetwork implements IPoliticalNetwork
     final private RationalNumber zero; // useful constant
     final private RationalNumber one;  // useful constant
     final boolean checkConvergence;
+
+    public interface TieBreaker
+    {
+        /**
+         * Compares two candidates that have exactly the same number of votes.
+         * @param id1
+         * @param id2
+         * @return -1 if the first candidate is less prefered than the second
+         *         +1 if the first candidate is prefered than the second
+         *          0 only if the two candidates are the same
+         */
+        int compare(int id1,int id2);
+    }        
+    public static class IDTierBreaker implements TieBreaker
+    {
+        @Override
+        public int compare(int id1, int id2)
+        {
+            if (id1 < id2) return -1;
+            if (id2 < id1) return 1;
+            return 0;
+        }
+        
+    }
+    
+    public interface DefinitionListener
+    {
+        /**
+         * Register that a candidate was eleted or eliminated.
+         * This allow external monitoring of the election and thus to debug code, for example,
+         * checking for violations of solid coalition guarantees.
+         * 
+         * @param candidate
+         * @param elected Treu if the candidate was elected. False if eliminated.
+         */
+        void registerDefinition(Candidate candidate, boolean elected);
+    }
+    
+    final TieBreaker tieBreaker;
+    final DefinitionListener definitionListener;
     
     public String toString()
     {
@@ -69,9 +109,13 @@ public class PoliticalNetwork implements IPoliticalNetwork
      * @param checkConvergence If true vote transfer processes are also performed iteractively using the original
      *                         network structure and the results are compared to the exact ones obtained with the
      *                         modified structure to see if they are converging to the right place 
+     * @param definitionListener A listener to be warned of elections and eliminations while they happen
+     * @param tieBreaker A breaker for eventual ties when candidates are about to be eliminated
      */
-    public PoliticalNetwork(RationalNumber.Factory numberFactory,String name,int numTh,boolean checkConvergence)
+    public PoliticalNetwork(RationalNumber.Factory numberFactory,String name,int numTh,boolean checkConvergence,TieBreaker tieBreaker,DefinitionListener definitionListener)
     {
+        this.tieBreaker = tieBreaker;
+        this.definitionListener = definitionListener;
         this.checkConvergence = checkConvergence;
         this.numberFactory = numberFactory;
         zero = numberFactory.valueOf(0,1);
@@ -92,6 +136,8 @@ public class PoliticalNetwork implements IPoliticalNetwork
     {
         // This ends some threads
         removeState = RS_DONE;
+        numDone=0;
+        numActive = 0;
         notifyAll();
     }        
     public Candidate getCandidate(int identifier)
@@ -187,21 +233,41 @@ public class PoliticalNetwork implements IPoliticalNetwork
     
     private HashMap<Integer,Candidate> identifyRecentlyElected()
     {
-        boolean last = remainingCandidates.size() + electedCandidates.size() == numberOfSeats.doubleValue(); // this variable compensates rounding errors
-        HashMap<Integer,Candidate> recemEleitos = new HashMap();
+        boolean last = remainingCandidates.size() + electedCandidates.size() == numberOfSeats.doubleValue(); 
+        HashMap<Integer,Candidate> recentlyElected = new HashMap();
         for (Iterator<Candidate> i=remainingCandidates.valueCollection().iterator(); i.hasNext(); )
         {
             Candidate c = i.next();
-            if (c.numberOfCurrentVotes.compareTo(currentQuota) >= 0 || last)
+            if (c.numberOfCurrentVotes.compareTo(currentQuota) >= 0)
             {    
-                recemEleitos.put(c.identifier,c);
+                recentlyElected.put(c.identifier,c);
                 electedCandidates.put(c.identifier, c);
                 c.status = Candidate.ST_ELECTED;
                 c.numberOfVotesWhenEliminatedOrElected = c.numberOfCurrentVotes;
                 i.remove();
+                if (definitionListener!=null)
+                    definitionListener.registerDefinition(c, true);                
             }    
         }    
-        return recemEleitos;        
+        if (recentlyElected.isEmpty() && remainingCandidates.size() + electedCandidates.size() == numberOfSeats.doubleValue())
+        {
+            // compensates rounding errors using Corollary 7
+            for (Iterator<Candidate> i=remainingCandidates.valueCollection().iterator(); i.hasNext(); )
+            {
+                Candidate c = i.next();
+                if (last && !numberFactory.isClose(c.numberOfCurrentVotes, currentQuota))
+                    throw new RuntimeException("Last candidates don't have a number of votes equal to the quota");
+                recentlyElected.put(c.identifier,c);
+                electedCandidates.put(c.identifier, c);
+                c.status = Candidate.ST_ELECTED;
+                c.numberOfVotesWhenEliminatedOrElected = c.numberOfCurrentVotes;
+                i.remove();
+                if (definitionListener!=null)
+                    definitionListener.registerDefinition(c, true);
+            }                            
+        }    
+        
+        return recentlyElected;        
     }        
             
     
@@ -219,7 +285,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
             
             transferVotesAndUpdateQuota(new ArrayList());            
             
-            // more candidates can be elected due to vote tranfers and reductions in the current quota
+            // more candidates can be elected due to vote tranfers and reductions in the current currentQuota
             recentlyElected = identifyRecentlyElected();
         }    
     }        
@@ -241,6 +307,9 @@ public class PoliticalNetwork implements IPoliticalNetwork
             eliminated.status = Candidate.ST_ELIMINATED;        // set the permanent status of the candidate
             eliminated.numberOfVotesWhenEliminatedOrElected = eliminated.numberOfCurrentVotes;
             remainingCandidates.remove(eliminated.identifier);
+            if (definitionListener!=null)
+                definitionListener.registerDefinition(eliminated, true);
+            
             //System.out.println("eliminated votes "+eliminado.numberOfCurrentVotes+"   currentQuota "+currentQuota);
         }                
         transferVotesAndUpdateQuota(recentlyEliminatedList);                    
@@ -265,9 +334,15 @@ public class PoliticalNetwork implements IPoliticalNetwork
     {
         Candidate eliminatedCandidate = null;
         for (Candidate c:remainingCandidates.valueCollection())        
-        {
-            if (eliminatedCandidate == null || c.numberOfCurrentVotes.compareTo(eliminatedCandidate.numberOfCurrentVotes) < 0)
+        { 
+            if (eliminatedCandidate == null)
                 eliminatedCandidate = c;
+            else
+            {    
+                int cpr = c.numberOfCurrentVotes.compareTo(eliminatedCandidate.numberOfCurrentVotes);
+                if (cpr < 0 || cpr==0 && tieBreaker.compare(eliminatedCandidate.identifier,c.identifier ) < 0)
+                   eliminatedCandidate = c;
+            }    
         }    
         ArrayList<Candidate> recentlyEliminatedCandidates = new ArrayList(); 
         recentlyEliminatedCandidates.add(eliminatedCandidate);
@@ -326,8 +401,10 @@ public class PoliticalNetwork implements IPoliticalNetwork
         {
             removeState = RS_NEIGHBORS;
             numDone = 0;
+            numActive = 0;
             notifyAll();
-            try { wait();} catch (InterruptedException ex) {throw new RuntimeException(ex); }
+            while (numDone!=numTh)
+                try { wait();} catch (InterruptedException ex) {throw new RuntimeException(ex); }
         }    
         
         // prepare to remove again,now from reverse neighbor sets
@@ -352,20 +429,24 @@ public class PoliticalNetwork implements IPoliticalNetwork
         {
             removeState = RS_REVERSENEIGHBORS;
             numDone = 0;
+            numActive = 0;
             notifyAll();
-            try { wait();} catch (InterruptedException ex) {throw new RuntimeException(ex); }
+            while(numDone!=numTh)
+                try { wait();} catch (InterruptedException ex) {throw new RuntimeException(ex); }
         }   
         
-        // one the candidate is not a remaining candidate anymore, it will never be remove from neighbor sets again and 
+        // once the candidate is not a remaining candidate anymore, it will never be removed from neighbor sets again and 
         // the reverse neighbor set can be cleared
         // note that the neighbor set, must be kept for elected candidates, because further vote tranfers can occur due
-        // to reductions in the current quota
+        // to reductions in the current currentQuota
         c.currentReverseNeighbors = null;                
     }        
     
     int numTh;
     int numDone;
+    int numActive;
     int removeState;
+    
     static final int RS_WAIT = 0;             // nothing is happening in the removal threads
     static final int RS_NEIGHBORS = 1;         // threads are removing a candidate from neighbor sets
     static final int RS_REVERSENEIGHBORS = 2;   // threads are removing a candidate from reverse neighbor sets
@@ -392,7 +473,25 @@ public class PoliticalNetwork implements IPoliticalNetwork
         @Override
         public void run()
         {
-           doRemoves(num);
+           /* 
+           try
+           {    
+              Thread.sleep(1000);
+           }
+           catch(InterruptedException e)
+           {
+               throw new RuntimeException(e);
+           } 
+            */
+           try
+           {    
+              doRemoves(num);
+           }
+           catch(RuntimeException e)
+           {
+               e.printStackTrace();
+               System.out.println("Exception in remover");
+           }    
         }        
     }
     
@@ -406,7 +505,18 @@ public class PoliticalNetwork implements IPoliticalNetwork
                 while (removeState==RS_WAIT)
                     try { wait();} catch (InterruptedException ex) {throw new RuntimeException(ex); }
                 act = removeState;
+                numActive++;
             }    
+            synchronized(this)
+            {
+                if (numActive==numTh)
+                {    
+                    removeState=RS_WAIT;                
+                    notifyAll();
+                }    
+                while (numActive!=numTh)
+                    try { wait();} catch (InterruptedException ex) {throw new RuntimeException(ex); }
+            }            
             if (act==RS_DONE)
                 break;
             if (act==RS_NEIGHBORS)
@@ -418,17 +528,12 @@ public class PoliticalNetwork implements IPoliticalNetwork
             {
                 for (RemoveEntry re:removeEntries[tn])
                     removeFromReverseNeighborSets(re.candidateToBeRemoved,re.candidateFromWhereToRemove);
-            }                            
+            }   
             synchronized(this)
             {
                 numDone++;
                 if (numDone==numTh)
-                {
-                    removeState=RS_WAIT;
                     notifyAll();
-                }    
-                else
-                    try { wait();} catch (InterruptedException ex) {throw new RuntimeException(ex); }
             }
         }    
     }        
@@ -479,7 +584,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
                 r2.transferPercentage = r2.transferPercentage.plus(percentageForth.times(r.transferPercentage.divide(complementarPercentageBackAndForth)));
             }            
         }            
-        //checa();
+        
     }        
     
     private void removeFromReverseNeighborSets(Candidate candidateToBeRemoved,Candidate candidateFromWhereToRemove)
@@ -503,7 +608,9 @@ public class PoliticalNetwork implements IPoliticalNetwork
         if (candidateFromWhereToRemove!=virtualDiscardCandidate && !candidateFromWhereToRemove.currentReverseNeighbors.containsKey(candidateToBeRemoved.identifier))
             throw new RuntimeException("Inconsistency in neighbor set");
 
-                
+        if (candidateToBeRemoved.currentReverseNeighbors==null)
+            throw new RuntimeException("Candidate being removed does nothave a reverse neighbor set");    
+            
         for (Candidate reverseNeighbor:candidateToBeRemoved.currentReverseNeighbors.valueCollection())            
            if (reverseNeighbor != candidateFromWhereToRemove)           
                candidateFromWhereToRemove.currentReverseNeighbors.put(reverseNeighbor.identifier, reverseNeighbor);
@@ -518,12 +625,12 @@ public class PoliticalNetwork implements IPoliticalNetwork
     static int numRep = 0;
     private void transferVotesAndUpdateQuota(List<Candidate> recentlyEliminated)
     {     
-        // The parameter recentlyEliminated avoid havinf to loop over all eliminated candidate to find which ones still have votes.
+       
         
-        //DadosTemporariosRepasseEstruturaOriginal dt = new DadosTemporariosRepasseEstruturaOriginal();
+        TemporaryDataForTranfersUsingOriginalStructure dt = checkConvergence ? new TemporaryDataForTranfersUsingOriginalStructure(): null;       
         
-        // Update the 
         
+         // The parameter recentlyEliminated avoid having to loop over all eliminated candidate to find which ones still have votes.
         RationalNumber sumVP = numberFactory.valueOf(0, 1);
         for (Candidate c:recentlyEliminated)
         {    
@@ -544,28 +651,32 @@ public class PoliticalNetwork implements IPoliticalNetwork
             sumP = sumP.plus(p);
         }
         RationalNumber newQuota;
-        if (sumP.compareTo(numberOfSeats) > 0)
-            throw new RuntimeException("Percentuais de descarte de eleitos superam cadeiras");
+        if (sumP.compareTo(numberOfSeats) > 0 && !numberFactory.isClose(sumP, numberOfSeats))
+            throw new RuntimeException("The sum of the percentages of discard of electec candidates is greater than the number of available seats");
 
-        if (!remainingCandidates.isEmpty())
+        if (!remainingCandidates.isEmpty())            
             newQuota = originalValidNumberOfVotes.minus(virtualDiscardCandidate.numberOfCurrentVotes).minus(sumVP).divide(numberOfSeats.minus(sumP));
         else
+        {   
+            if ( !numberFactory.isClose(sumP, numberOfSeats))
+                throw new RuntimeException("The sum of the percentages of discard of electec candidates does not match the number of available seats");
+            
             // in the very end of the election, vote tranfers and discards don't matter anymore
-            // the quota could be kept the same or reduced to any non negative number including zero
+            // the currentQuota could be kept the same or reduced to any non negative number including zero
             // we just cannot use the usual update formula to avoid a 0/0
-            // if we set the quota to zero, all elected candidates would discard all votes
-            // we prefer to keep the old quota.
-            newQuota = currentQuota;
-        //if (!novoQuocienteEleitoral.equals(currentQuota))
-        //   System.out.println("currentQuota reduced to "+currentQuota);        
+            // if we set the currentQuota to zero, all elected candidates would discard all votes
+            // we prefer to keep the old currentQuota.
+            newQuota = currentQuota;            
+        }    
         
         transferVotesAccordingToQuota(newQuota, recentlyEliminated);
         
         currentQuota = newQuota;
 
-        //if (numRep++ % 1 ==0)
-        //   repassaPelaRedeEAtualizaCoeficienteEstruturaOriginal(dt);
-            //System.out.println("Repasee teste");
+        
+        if (dt!=null)
+           transferVotesIteractivelyUsingOriginalStructure(dt);
+        
         
     }    
         
@@ -593,102 +704,174 @@ public class PoliticalNetwork implements IPoliticalNetwork
     }        
 
     
-    
-    class DadosTemporariosRepasseEstruturaOriginal
+    /**
+     * This class conatins data that allows iteractive vote transfers using the unmodified political network.
+     */
+    class TemporaryDataForTranfersUsingOriginalStructure
     {
-          TIntObjectHashMap<Candidate> candidatos;
-          TIntObjectHashMap<Candidate> candidatosFonte;
-          RationalNumber quocienteEleitoral;           
-          Candidate descarte;
-          DadosTemporariosRepasseEstruturaOriginal()
+          TIntObjectHashMap<Candidate> candidates;
+          TIntObjectHashMap<Candidate> sourceCandidates; // candidates that can be the source of a transfer
+          RationalNumber currentQuota;           
+          Candidate discardCandidate;
+          TemporaryDataForTranfersUsingOriginalStructure()
           {              
-            quocienteEleitoral = PoliticalNetwork.this.currentQuota;  
-            descarte = new Candidate(PoliticalNetwork.this.virtualDiscardCandidate);
-            candidatos = new TIntObjectHashMap();
-            for (Candidate c:PoliticalNetwork.this.candidates.valueCollection())                
-               candidatos.put(c.identifier,new Candidate(c));              
-            for (Candidate c:candidatos.valueCollection())
+            currentQuota = PoliticalNetwork.this.currentQuota;  
+            discardCandidate = new Candidate(PoliticalNetwork.this.virtualDiscardCandidate);
+            candidates = new TIntObjectHashMap();
+            for (Candidate c:PoliticalNetwork.this.candidates.valueCollection())   // copies candidates             
+               candidates.put(c.identifier,new Candidate(c));              
+            for (Candidate c:candidates.valueCollection())                         // copies relations
             {
-                TIntObjectHashMap<NeighborhoodRelation> vizinhosOriginais = new TIntObjectHashMap();
+                TIntObjectHashMap<NeighborhoodRelation> originalNeighbors = new TIntObjectHashMap();
                 for (NeighborhoodRelation r:c.originalNeighbors.valueCollection())
-                    vizinhosOriginais.put(r.neighbor.identifier,new NeighborhoodRelation(candidatos.get(r.neighbor.identifier),r.transferPercentage));
-                c.originalNeighbors = vizinhosOriginais;
+                    originalNeighbors.put(r.neighbor.identifier,new NeighborhoodRelation(candidates.get(r.neighbor.identifier),r.transferPercentage));
+                c.originalNeighbors = originalNeighbors;
             }    
-            candidatosFonte = new TIntObjectHashMap();
-            for (Candidate c:candidatos.valueCollection())
+            sourceCandidates = new TIntObjectHashMap();
+            for (Candidate c:candidates.valueCollection())
                 if (
                         c.status==Candidate.ST_ELECTED || 
                         c.status==Candidate.ST_ELIMINATED  ||
                         c.status==Candidate.ST_BEING_ELIMINATED 
                    )
-                   candidatosFonte.put(c.identifier, c); 
+                   sourceCandidates.put(c.identifier, c); 
+          
           }        
+          TemporaryDataForTranfersUsingOriginalStructure(TemporaryDataForTranfersUsingOriginalStructure dt)
+          {              
+            currentQuota = dt.currentQuota;  
+            discardCandidate = new Candidate(dt.discardCandidate);
+            candidates = new TIntObjectHashMap();
+            for (Candidate c:dt.candidates.valueCollection())   // copies candidates             
+               candidates.put(c.identifier,new Candidate(c));                          
+            for (Candidate c:candidates.valueCollection())                         // copies relations
+            {
+                TIntObjectHashMap<NeighborhoodRelation> originalNeighbors = new TIntObjectHashMap();
+                for (NeighborhoodRelation r:c.originalNeighbors.valueCollection())
+                    originalNeighbors.put(r.neighbor.identifier,new NeighborhoodRelation(candidates.get(r.neighbor.identifier),r.transferPercentage));
+                c.originalNeighbors = originalNeighbors;
+            }    
+            sourceCandidates = new TIntObjectHashMap();
+            for (Candidate c:candidates.valueCollection())
+                if (
+                        c.status==Candidate.ST_ELECTED || 
+                        c.status==Candidate.ST_ELIMINATED  ||
+                        c.status==Candidate.ST_BEING_ELIMINATED 
+                   )
+                   sourceCandidates.put(c.identifier, c);           
+          }        
+          
     }
-    
-    private void repassaPelaRedeEAtualizaCoeficienteEstruturaOriginal(DadosTemporariosRepasseEstruturaOriginal dt)
+    /**
+     * This method is used to check if an iteractive vote transfer process using the original structure would indeed coverge to
+     * the results calculated usign the modified structure.
+     * @param dt A structure containing a copy of the original data
+     */
+    private void transferVotesIteractivelyUsingOriginalStructure(TemporaryDataForTranfersUsingOriginalStructure dto)
     {
-        int nq = electedCandidates.isEmpty() ? 1 : 16;
-        
-        for (int i=0; i<nq; i++)
-        {    
-/*            
-            RationalNumber maxDif = zero;
-            RationalNumber totDif =  zero;            
-            RationalNumber totMain = zero;
-            RationalNumber totCopy = zero;
-            for (Candidate c:dt.candidates.values())
+        int mul =1; // this variable regulates the number of iteractions
+        RationalNumber maxDif = zero;
+        do // This loop tries to increase the number of iteractions too see if convergence is confirmed.
+           // When the number ofiteractions is increased, the vote transfer process is started from zero.
+           // Discarding votes too ealy makes errors permanent, so we need to restart and be more patient. 
+           // We could work around this problem detecting transitive closures, but we prefer to be simplistic here. 
+        {
+            if (mul > 512) // an arbitrary limit for the multiplier of the number of iteractions
+                throw new RuntimeException("Convergence not verified");            
+            
+            // Copies the initial data to be able to restart latter, if the number of iterations are not enough to confirm convergence.            
+            TemporaryDataForTranfersUsingOriginalStructure dt = new TemporaryDataForTranfersUsingOriginalStructure(dto);
+            int maxNumberValueForTheQuotaAttempted = electedCandidates.isEmpty() ? 1 : 2 * mul; // when there are no elected candidates, the current quota is never reduced
+            int maxRounds = 32 * mul;
+            for (int i=0; i<maxNumberValueForTheQuotaAttempted; i++) // tries quota reductions
+            {    
+                for (int t=0; t<maxRounds; t++) // execute rounds of the transfer process for a fixed quota
+                    for (Candidate c:dt.sourceCandidates.valueCollection()) // execute transfers using every possible candidate as a source
+                    {    
+                        if (c.status==Candidate.ST_REMAINING)
+                            throw new RuntimeException("Remaining candidate listed as a source for vote transfers");
+
+                        RationalNumber transferableVotes = c.status==Candidate.ST_ELECTED ? c.numberOfCurrentVotes.minus(dt.currentQuota) : c.numberOfCurrentVotes;
+                        if (!transferableVotes.equals(zero))
+                        {   
+                            if (!c.originalNeighbors.isEmpty())
+                                c.numberOfCurrentVotes = c.numberOfCurrentVotes.minus(transferableVotes);
+                            for (NeighborhoodRelation r:c.originalNeighbors.valueCollection())
+                                r.neighbor.numberOfCurrentVotes = r.neighbor.numberOfCurrentVotes.plus(transferableVotes.times(r.transferPercentage));
+                        }    
+                    }    
+                // after a big number of vote transfers, discard transferrable votes that have not reached remaining candidates                
+                for (Candidate c:dt.sourceCandidates.valueCollection())
+                    if (c.status!=Candidate.ST_REMAINING)
+                    {
+                        RationalNumber vp = c.status==Candidate.ST_ELECTED ? c.numberOfCurrentVotes.minus(dt.currentQuota) : c.numberOfCurrentVotes;
+                        if (!vp.equals(zero))
+                        {    
+                            c.numberOfCurrentVotes = c.numberOfCurrentVotes.minus(vp);
+                            dt.discardCandidate.numberOfCurrentVotes = dt.discardCandidate.numberOfCurrentVotes.plus(vp);
+                        }    
+                    }    
+                dt.currentQuota = originalValidNumberOfVotes.minus(dt.discardCandidate.numberOfCurrentVotes).divide(numberOfSeats);          
+            }           
+            maxDif = zero;
+            for (Candidate c:dt.candidates.valueCollection())
             {
                 Candidate cc = candidates.get(c.identifier);
-                totMain = totMain.plus(cc.numberOfCurrentVotes);
-                totCopy = totCopy.plus(c.numberOfCurrentVotes);
                 RationalNumber dif = c.numberOfCurrentVotes.minus(cc.numberOfCurrentVotes);
-                totDif = totDif.plus(dif);
                 if (dif.compareTo(zero) < 0)
                     dif = zero.minus(dif);                
                 if (maxDif.compareTo(dif) < 0)                
-                    maxDif = dif;
-                if (c.status!=Candidate.ST_REMAINING)
+                    maxDif = dif;            
+            } 
+            mul *= 2;
+        }    
+        while (maxDif.doubleValue() >=1); // 1 is an arbitrary value. A smaller value would need more iteractions            
+    }        
+
+    
+    /**
+     * This method is used to check if an iteractive vote transfer process using the original strucutre would indeed covergeto
+     * the results calculated usign the modified structure.
+     * @param dt A structure containing a copy of the original data
+     */
+    private void transferVotesIteractivelyUsingOriginalStructureOld(TemporaryDataForTranfersUsingOriginalStructure dt)
+    {
+        int maxNumberValueForTheQuotaAttempted = electedCandidates.isEmpty() ? 1 : 1024; // when there are no elected candidates, the current quota is never reduced
+        int maxRounds = 16384;
+        for (int i=0; i<maxNumberValueForTheQuotaAttempted; i++) // tries quota reductions
+        {    
+            for (int t=0; t<maxRounds; t++) // execute rounds of the transfer process for a fixed quota
+                for (Candidate c:dt.sourceCandidates.valueCollection()) // execute transfers using every possible candidate as a source
                 {    
-                    RationalNumber vp = c.status==Candidate.ST_ELECTED ? c.numberOfCurrentVotes.minus(dt.currentQuota) : c.numberOfCurrentVotes;
-                    if (!vp.equals(zero))
-                        vp = zero;
-                }
-            }   
-            System.out.println("MAXDIF = "+maxDif.doubleValue()+" desc "+dt.virtualDiscardCandidate.numberOfCurrentVotes +"  "+virtualDiscardCandidate.numberOfCurrentVotes+" TOTDIF = "+totDif);
-            System.out.println("TOTMAIN = "+totMain+" TOTCOPY "+totCopy);
-*/            
-            for (int t=0; t<1024; t++)
-                for (Candidate c:dt.candidatosFonte.valueCollection())
-                    if (c.status!=Candidate.ST_REMAINING)
-                    {
-                        RationalNumber vp = c.status==Candidate.ST_ELECTED ? c.numberOfCurrentVotes.minus(dt.quocienteEleitoral) : c.numberOfCurrentVotes;
-                        RationalNumber vp2 = zero;
-                        if (!vp.equals(zero))
-                        {   
-                            if (!c.originalNeighbors.isEmpty())
-                                c.numberOfCurrentVotes = c.numberOfCurrentVotes.minus(vp);
-                            for (NeighborhoodRelation r:c.originalNeighbors.valueCollection())
-                            {
-                                //if (r.neighbor.identifier==28)
-                                //    System.out.println("28 "+r.neighbor.numberOfCurrentVotes+" "+c.identifier+" "+vp.times(r.transferPercentage));
-                                r.neighbor.numberOfCurrentVotes = r.neighbor.numberOfCurrentVotes.plus(vp.times(r.transferPercentage));
-                                vp2 = vp2.plus(vp.times(r.transferPercentage));
-                            }   
-                            if (vp2.minus(vp).doubleValue() > 0.01)
-                                System.out.println("Votos brotaram");
-                        }    
+                    if (c.status==Candidate.ST_REMAINING)
+                        throw new RuntimeException("Remaining candidate listed as a source for vote transfers");
+                        
+                    RationalNumber transferableVotes = c.status==Candidate.ST_ELECTED ? c.numberOfCurrentVotes.minus(dt.currentQuota) : c.numberOfCurrentVotes;
+                    //RationalNumber vp2 = zero;
+                    if (!transferableVotes.equals(zero))
+                    {   
+                        if (!c.originalNeighbors.isEmpty())
+                            c.numberOfCurrentVotes = c.numberOfCurrentVotes.minus(transferableVotes);
+                        for (NeighborhoodRelation r:c.originalNeighbors.valueCollection())
+                        {
+                            r.neighbor.numberOfCurrentVotes = r.neighbor.numberOfCurrentVotes.plus(transferableVotes.times(r.transferPercentage));
+                      //      vp2 = vp2.plus(transferableVotes.times(r.transferPercentage));
+                        }   
+                        //if (vp2.minus(transferableVotes).doubleValue() > 0.01)
+                        //    System.out.println("Votos brotaram");
                     }    
-            for (Candidate c:dt.candidatosFonte.valueCollection())
+                }    
+            for (Candidate c:dt.sourceCandidates.valueCollection())
                 if (c.status!=Candidate.ST_REMAINING)
                 {
-                    RationalNumber vp = c.status==Candidate.ST_ELECTED ? c.numberOfCurrentVotes.minus(dt.quocienteEleitoral) : c.numberOfCurrentVotes;
+                    RationalNumber vp = c.status==Candidate.ST_ELECTED ? c.numberOfCurrentVotes.minus(dt.currentQuota) : c.numberOfCurrentVotes;
                     if (!vp.equals(zero))
                     {    
                         c.numberOfCurrentVotes = c.numberOfCurrentVotes.minus(vp);
-                        dt.descarte.numberOfCurrentVotes = dt.descarte.numberOfCurrentVotes.plus(vp);
+                        dt.discardCandidate.numberOfCurrentVotes = dt.discardCandidate.numberOfCurrentVotes.plus(vp);
                     }    
                 }    
-            dt.quocienteEleitoral = originalValidNumberOfVotes.minus(dt.descarte.numberOfCurrentVotes).divide(numberOfSeats);          
+            dt.currentQuota = originalValidNumberOfVotes.minus(dt.discardCandidate.numberOfCurrentVotes).divide(numberOfSeats);          
             //if (!dt.virtualDiscardCandidate.numberOfCurrentVotes.isZero())
             //    System.out.println("Descartados em convergência "+dt.virtualDiscardCandidate.numberOfCurrentVotes);
         }           
@@ -696,7 +879,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
         RationalNumber totDif =  zero;            
         RationalNumber totMain = zero;
         RationalNumber totCopy = zero;
-        for (Candidate c:dt.candidatos.valueCollection())
+        for (Candidate c:dt.candidates.valueCollection())
         {
             Candidate cc = candidates.get(c.identifier);
             totMain = totMain.plus(cc.numberOfCurrentVotes);
@@ -708,15 +891,21 @@ public class PoliticalNetwork implements IPoliticalNetwork
             if (maxDif.compareTo(dif) < 0)                
                 maxDif = dif;            
             totDif = totDif.plus(dif);
+/*            
             if (c.status!=Candidate.ST_REMAINING)
             {    
-                RationalNumber vp = c.status==Candidate.ST_ELECTED ? c.numberOfCurrentVotes.minus(dt.quocienteEleitoral) : c.numberOfCurrentVotes;
+                RationalNumber vp = c.status==Candidate.ST_ELECTED ? c.numberOfCurrentVotes.minus(dt.currentQuota) : c.numberOfCurrentVotes;
                 if (!vp.equals(zero))
                     vp = zero;
             }
-        }   
-        System.out.println("MAXDIF = "+maxDif.doubleValue()+" desc "+dt.descarte.numberOfCurrentVotes.doubleValue() +"  "+virtualDiscardCandidate.numberOfCurrentVotes.doubleValue()+" TOTDIF = "+totDif.doubleValue());
-        System.out.println("TOTMAIN = "+totMain.doubleValue()+" TOTCOPY "+totCopy.doubleValue());
+*/        
+        } 
+        if (maxDif.doubleValue() >=1) // 1 is an arbitrary value. smaller value need more iteractions
+            throw new RuntimeException("Convergence not verified");
+            
+        //System.out.println("MAXDIF = "+maxDif.doubleValue()+" TOTDIF = "+totDif.doubleValue());
+        //System.out.println(" desc "+dt.discardCandidate.numberOfCurrentVotes.doubleValue() +"  "+virtualDiscardCandidate.numberOfCurrentVotes.doubleValue());
+        //System.out.println("TOTMAIN = "+totMain.doubleValue()+" TOTCOPY "+totCopy.doubleValue());
         
     }        
     

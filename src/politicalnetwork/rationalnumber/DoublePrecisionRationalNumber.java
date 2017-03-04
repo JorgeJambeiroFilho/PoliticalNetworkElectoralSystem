@@ -28,6 +28,15 @@ public class DoublePrecisionRationalNumber implements RationalNumber
             if (dividend==divisor) return ONE;
             return new DoublePrecisionRationalNumber((double)dividend/divisor);
         }    
+        double maxError = 0;
+        public boolean isClose(RationalNumber v1,RationalNumber v2)
+        {
+            double dif = Math.abs(v1.doubleValue()-v2.doubleValue());
+            if (dif > maxError)
+                maxError = dif;
+            return dif < 1e-8 * (v1.doubleValue()+v2.doubleValue());
+        }        
+        
     }    
     
     @Override

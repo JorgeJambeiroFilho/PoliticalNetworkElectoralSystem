@@ -2,7 +2,7 @@
  * To change this template, choose Tools | Templates
  * and open the template in the editor.
  */
-package politicalnetwork.core;
+package politicalnetwork.testimplementation;
 
 import gnu.trove.map.hash.TIntObjectHashMap;
 import politicalnetwork.rationalnumber.RationalNumber;
@@ -242,8 +242,9 @@ public class Candidate
     {
         StringBuffer sb = new StringBuffer();
         sb.append("" + identifier + "\n");
-        for (NeighborhoodRelation r : currentNeighbors.valueCollection())
-            sb.append("    " + r.neighbor.identifier + "       " + r.transferPercentage + "\n");
+        if (currentNeighbors!=null)
+            for (NeighborhoodRelation r : currentNeighbors.valueCollection())
+                sb.append("    " + r.neighbor.identifier + "       " + r.transferPercentage + "\n");
         return sb.toString();
     }
 
@@ -290,7 +291,7 @@ public class Candidate
         return numberOfVotesWhenEliminatedOrElected;
     }
 
-    public boolean isIsBandeira()
+    public boolean isVirtual()
     {
         return isVirtual;
     }

@@ -31,6 +31,10 @@ public class InfinitePrecisionRationalNumber implements RationalNumber
             if (dividend==divisor) return ONE;
             return new InfinitePrecisionRationalNumber(dividend,divisor);
         }    
+        public boolean isClose(RationalNumber v1,RationalNumber v2)
+        {
+            return v1.equals(v2); // the margin of error is zero
+        }        
     }    
     
     @Override

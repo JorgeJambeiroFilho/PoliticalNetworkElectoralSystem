@@ -4,8 +4,8 @@
  */
 package politicalnetwork.tests;
 
-import politicalnetwork.core.PoliticalNetwork;
-import politicalnetwork.core.IPoliticalNetwork;
+import politicalnetwork.testimplementation.PoliticalNetwork;
+import politicalnetwork.testimplementation.IPoliticalNetwork;
 import politicalnetwork.rationalnumber.InfinitePrecisionRationalNumber;
 import politicalnetwork.rationalnumber.RationalNumber;
 import java.io.BufferedReader;
@@ -18,6 +18,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Random;
+import politicalnetwork.testimplementation.PoliticalNetwork.IDTierBreaker;
 
 /**
  *
@@ -25,14 +26,14 @@ import java.util.Random;
  */
 public class TestesRemocaoAleatoria
 {
-    
+        
     public IPoliticalNetwork montaRede(int seed,String name,int numTh)
     {   
         int n = 100;
         int nr = 10;
         Random r = new Random(seed);
         RationalNumber.Factory rationalFactory = new InfinitePrecisionRationalNumber.Factory();
-        IPoliticalNetwork rp = new PoliticalNetwork(rationalFactory,"Rede "+name,numTh,false);
+        IPoliticalNetwork rp = new PoliticalNetwork(rationalFactory,"Rede "+name,numTh,false,new IDTierBreaker(),null);
         for (int t=1; t<=n; t++)   
             rp.addCandidate(t);
         

@@ -2,7 +2,7 @@
  * To change this template, choose Tools | Templates
  * and open the template in the editor.
  */
-package politicalnetwork.core;
+package politicalnetwork.testimplementation;
 
 import politicalnetwork.rationalnumber.RationalNumber;
 
