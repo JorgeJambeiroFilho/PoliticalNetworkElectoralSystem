@@ -1,11 +1,4 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
 package politicalnetwork.rationalnumber;
-
-
-
 
 /**
  * This class supports the RationalNumber interface using double precision
@@ -13,7 +6,7 @@ package politicalnetwork.rationalnumber;
  * This class needs to be used in practice when the number of candidates is high 
  * because infinite precision rational numbers are too slow.
  *   
- * @author Removed for Blind Review
+ * @author Removed for blind review
  */
 public class DoublePrecisionRationalNumber implements RationalNumber 
 {

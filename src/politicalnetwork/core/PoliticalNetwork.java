@@ -1,4 +1,4 @@
-package politicalnetwork.testimplementationsimp;
+package politicalnetwork.core;
 
 import gnu.trove.map.hash.THashMap;
 import gnu.trove.map.hash.TIntObjectHashMap;
@@ -298,6 +298,8 @@ public class PoliticalNetwork implements IPoliticalNetwork
 
     public void defineStatusOfArbitraryCandidates(List<Integer> eliminated,List<Integer> elected)
     {
+        if (currentQuota==null)
+            prepareToProcess(); // when this method is called for the first time, the network needs to be prepared.
         HashMap<Integer,Candidate> defined = new HashMap();
         for(Integer candId:eliminated)
         {   

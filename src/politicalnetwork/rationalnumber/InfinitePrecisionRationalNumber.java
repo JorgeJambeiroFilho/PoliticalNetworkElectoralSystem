@@ -1,22 +1,16 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
 package politicalnetwork.rationalnumber;
-
 import org.jscience.mathematics.number.Rational;
 
 /**
- * This class supports the RationalNumber interface using JScience Rational. 
- * Number are represented by two unlimitedly large integers, what provides
+ * This class supports the RationalNumber interface using the JScience Rational class. 
+ * Numbers are represented by two unlimitedly large integers, what provides
  * infinite precision.
  * This class can only be used for a small number of candidates, because it
- * becamoes slow fast.
+ * becomes slow fast.
  * It is ideal for tests beacause, with it,  all results match the theoretical 
  * predictions exactly.
  * 
- * 
- * @author Removed for Blind Review
+ * @author Removed for blind review
  */
 public class InfinitePrecisionRationalNumber implements RationalNumber 
 {

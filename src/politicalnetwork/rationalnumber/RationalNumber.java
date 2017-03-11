@@ -1,16 +1,17 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
 package politicalnetwork.rationalnumber;
 
 
 
 /**
- * Interface to manipulate rational numbers.
- * All numbers involved in a politcal network election are rationals.
+ * This interface allows the political network algorithm to to manipulate rational 
+ * numbers that can be implemented differently.
  * 
- * @author Removed for Blind Review
+ * All numbers involved in a political network election are rationals, but a true rational
+ * number implementation is too slow for large numbers of candidates. Thus we support an
+ * an InfinitePrecisionRationalNumber, which is the true rational and a 
+ * DoublePrecisionRationalNumber, which is just a double backing up a rational interface.
+ * 
+ * @author Removed for blind review
  */
 public interface RationalNumber extends Comparable<RationalNumber>
 {

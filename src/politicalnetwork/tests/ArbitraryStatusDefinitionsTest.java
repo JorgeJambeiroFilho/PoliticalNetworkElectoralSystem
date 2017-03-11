@@ -6,13 +6,13 @@ package politicalnetwork.tests;
 
 import java.util.ArrayList;
 import java.util.List;
-import politicalnetwork.testimplementationsimp.PoliticalNetwork;
-import politicalnetwork.testimplementationsimp.IPoliticalNetwork;
+import politicalnetwork.core.PoliticalNetwork;
+import politicalnetwork.core.IPoliticalNetwork;
 import politicalnetwork.rationalnumber.RationalNumber;
 import java.util.Random;
-import politicalnetwork.testimplementationsimp.PoliticalNetwork.IDTierBreaker;
+import politicalnetwork.core.PoliticalNetwork.IDTierBreaker;
 import politicalnetwork.rationalnumber.InfinitePrecisionRationalNumber;
-import politicalnetwork.testimplementationsimp.Candidate;
+import politicalnetwork.core.Candidate;
 
 /**
  *
@@ -72,9 +72,12 @@ public class ArbitraryStatusDefinitionsTest
         int numDefCand = rand.nextInt(numCandidates / 50);
         int numSeats = 1+rand.nextInt(numCandidates);
         
+        
         RationalNumber.Factory infFact = new InfinitePrecisionRationalNumber.Factory();
         IPoliticalNetwork politicalNetwork1 = new PoliticalNetwork(infFact,"Network 1 seed = "+seed,numTh,false,new IDTierBreaker(),null);       
         IPoliticalNetwork politicalNetwork2 = new PoliticalNetwork(infFact,"Network 2 seed = "+seed,numTh,false,new IDTierBreaker(),null);        
+        
+        int numValidVotes = 0;
         
         try
         {    
@@ -86,6 +89,7 @@ public class ArbitraryStatusDefinitionsTest
                 int numCandVotes = rand.nextInt(maxVotesPerCand); 
                 politicalNetwork1.setNumberOfVotes(candId, numCandVotes); 
                 politicalNetwork2.setNumberOfVotes(candId, numCandVotes); 
+                numValidVotes += numCandVotes;
             }    
             for (int candId=1; candId<=numCandidates; candId++)
             {  
@@ -120,20 +124,20 @@ public class ArbitraryStatusDefinitionsTest
             politicalNetwork1.setNumberOfSeats(numSeats);
             politicalNetwork2.setNumberOfSeats(numSeats);
 
-            politicalNetwork1.prepareToProcess();
-            politicalNetwork2.prepareToProcess();
+            //politicalNetwork1.prepareToProcess();
+            //politicalNetwork2.prepareToProcess();
             
             
             int[] defCandidates = getRandomIntsWithoutRepetitions(numCandidates,numDefCand,rand);
             boolean[] status = new boolean[numDefCand];
             
-            RationalNumber q = politicalNetwork1.getCurrentQuota();
+            RationalNumber q =  infFact.valueOf(numValidVotes, numSeats); //  politicalNetwork1.getCurrentQuota();
             for (int t=0; t<numDefCand; t++)
             {    
                 Candidate c = politicalNetwork1.getCandidate(defCandidates[t]);
                 if (c==null)
                     throw new RuntimeException("Candidate not found");
-                RationalNumber v = c.getNumberOfCurrentVotes();
+                RationalNumber v = c.getNumberOfIndividualVotes();//  getNumberOfCurrentVotes();
                 status[t] = v.compareTo(q) >= 0;
             }
             

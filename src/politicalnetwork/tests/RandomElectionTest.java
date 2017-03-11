@@ -8,15 +8,15 @@ import gnu.trove.map.hash.THashMap;
 import gnu.trove.map.hash.TIntObjectHashMap;
 import java.util.ArrayList;
 import java.util.Map.Entry;
-import politicalnetwork.testimplementationsimp.PoliticalNetwork;
-import politicalnetwork.testimplementationsimp.IPoliticalNetwork;
+import politicalnetwork.core.PoliticalNetwork;
+import politicalnetwork.core.IPoliticalNetwork;
 import politicalnetwork.rationalnumber.DoublePrecisionRationalNumber;
 import politicalnetwork.rationalnumber.RationalNumber;
 import java.util.Random;
 import java.util.TreeMap;
-import politicalnetwork.testimplementationsimp.Candidate;
-import politicalnetwork.testimplementationsimp.PoliticalNetwork.DefinitionListener;
-import politicalnetwork.testimplementationsimp.PoliticalNetwork.IDTierBreaker;
+import politicalnetwork.core.Candidate;
+import politicalnetwork.core.PoliticalNetwork.DefinitionListener;
+import politicalnetwork.core.PoliticalNetwork.IDTierBreaker;
 import politicalnetwork.rationalnumber.InfinitePrecisionRationalNumber;
 
 /**
