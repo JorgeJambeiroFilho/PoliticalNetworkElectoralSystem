@@ -4,8 +4,8 @@
  */
 package politicalnetwork.tests;
 
-import politicalnetwork.testimplementation.PoliticalNetwork;
-import politicalnetwork.testimplementation.IPoliticalNetwork;
+import politicalnetwork.testimplementationsimp.PoliticalNetwork;
+import politicalnetwork.testimplementationsimp.IPoliticalNetwork;
 import politicalnetwork.rationalnumber.InfinitePrecisionRationalNumber;
 import politicalnetwork.rationalnumber.RationalNumber;
 import java.io.BufferedReader;
@@ -18,7 +18,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Random;
-import politicalnetwork.testimplementation.PoliticalNetwork.IDTierBreaker;
+import politicalnetwork.testimplementationsimp.PoliticalNetwork.IDTierBreaker;
 
 /**
  *

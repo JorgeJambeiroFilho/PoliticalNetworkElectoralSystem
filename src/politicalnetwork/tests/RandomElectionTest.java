@@ -8,22 +8,22 @@ import gnu.trove.map.hash.THashMap;
 import gnu.trove.map.hash.TIntObjectHashMap;
 import java.util.ArrayList;
 import java.util.Map.Entry;
-import politicalnetwork.testimplementation.PoliticalNetwork;
-import politicalnetwork.testimplementation.IPoliticalNetwork;
+import politicalnetwork.testimplementationsimp.PoliticalNetwork;
+import politicalnetwork.testimplementationsimp.IPoliticalNetwork;
 import politicalnetwork.rationalnumber.DoublePrecisionRationalNumber;
 import politicalnetwork.rationalnumber.RationalNumber;
 import java.util.Random;
 import java.util.TreeMap;
-import politicalnetwork.testimplementation.Candidate;
-import politicalnetwork.testimplementation.PoliticalNetwork.DefinitionListener;
-import politicalnetwork.testimplementation.PoliticalNetwork.IDTierBreaker;
+import politicalnetwork.testimplementationsimp.Candidate;
+import politicalnetwork.testimplementationsimp.PoliticalNetwork.DefinitionListener;
+import politicalnetwork.testimplementationsimp.PoliticalNetwork.IDTierBreaker;
 import politicalnetwork.rationalnumber.InfinitePrecisionRationalNumber;
 
 /**
  *
  * @author jesjf22
  */
-public class RandomElection
+public class RandomElectionTest
 {
     
     static class CandidateOrderKey implements Comparable<CandidateOrderKey>
@@ -63,7 +63,7 @@ public class RandomElection
     static class PartyData
     {
         int totalNumberOfVotesOfParty;
-        TreeMap<CandidateOrderKey,Integer/*candidate id*/> partyCandidates;
+        TreeMap<CandidateOrderKey,Candidate> partyCandidates;
         boolean isSolidCoalition;
         boolean isPartyCoalition;
         int minElected;
@@ -80,9 +80,9 @@ public class RandomElection
            if (!isSolidCoalition) return;
            int numElected = 0;
            boolean anyOneNotElected = false;
-           for (Entry<CandidateOrderKey,Integer> e:partyCandidates.entrySet())
+           for (Entry<CandidateOrderKey,Candidate> e:partyCandidates.entrySet())
            {    
-               if (elected.contains(e.getValue()))
+               if (elected.contains(e.getValue().getIdentifier()))
                {    
                    if (isPartyCoalition && anyOneNotElected)
                        throw new RuntimeException("Elected memebers of party were not the most voted");           
@@ -94,18 +94,28 @@ public class RandomElection
            if (numElected < minElected)
                throw new RuntimeException("Party did not have enough candidates elected");           
         }        
-        void close(int numValidVotes,int numSeats)
+        void close(long numValidVotes,int numSeats)
         {
-              minElected = Math.min(partyCandidates.size(),totalNumberOfVotesOfParty * numSeats / numValidVotes);            
+              minElected = Math.min(partyCandidates.size(),(int)(((long)totalNumberOfVotesOfParty) * numSeats / numValidVotes));            
         }        
         
         private void registerDefinition(int candidateIdentifier, boolean elected)
         {
-            if (elected)
+            if (elected || !isSolidCoalition)
                 return;
-            numEliminated++;
+            numEliminated++;            
             if (partyCandidates.size()-numEliminated < minElected)
-                throw new RuntimeException("Too many candidates of party eliminated");
+            {    
+                double numVotes = 0;
+                /*
+                for (Candidate cand:partyCandidates.values())
+                {
+                    numVotes += cand.getNumberOfCurrentVotes().doubleValue();
+                    if (cand.getCurrentNeighbors()!=null && cand.getCurrentNeighbors().containsKey(0))
+                        throw new RuntimeException("Too many candidates of party eliminated - discard candidate beacame a neighbor");
+                }*/
+                throw new RuntimeException("Too many candidates of party eliminated "+numVotes+" "+totalNumberOfVotesOfParty);
+            }    
         }
     }
     
@@ -120,8 +130,8 @@ public class RandomElection
             partyMap = new THashMap();
             for (int t=0; t<partyData.length; t++)
             {
-                for (Integer candId:partyData[t].partyCandidates.values())
-                    partyMap.put(candId, partyData[t]);
+                for (Candidate cand:partyData[t].partyCandidates.values())
+                    partyMap.put(cand.getIdentifier(), partyData[t]);
             }    
         }
                 
@@ -137,26 +147,29 @@ public class RandomElection
     
     /**
      * This method runs a random election and throws an exception if any inconsistency is found.
-     * Elections with at most 300 candidates per party are run twice. Once with finite and once with infinite precision 
+     * 
+     * Elections with at most 200 candidates per party are run twice. Once with finite and once with infinite precision 
      * numbers. If there is a divergence among the two results the method returns true
      * 
+     * For elections with at most 50 candidates, vote transfers are also run iteractively to test convergence.
+     *      * 
      * @param seed The seed for the random number generator. With the same seed, the same random election is executed.
-     * @return True if there is a divergenge between finite and infinite precision results.
+     * @return True if there is a divergenge between finite and infinite precision results, what is possible, but very difficult .
      */
     public static boolean runRandomElection(int seed)
     {   
         int numTh = Runtime.getRuntime().availableProcessors();
         Random rand = new Random(seed);
-        int maxCandidates = 50;
-        int numParties =  1;//+rand.nextInt(30);
+        int maxCandidates = 1500;
+        int numParties =  1+rand.nextInt(30);
         int maxCandParty = 1+rand.nextInt(maxCandidates / numParties);
         int minCandParty = 1;         
         int maxNeighbors = rand.nextInt(100);        
-        int maxVotesPerCand = 1000+rand.nextInt(10000000);
+        int maxVotesPerCand = 1000+rand.nextInt(1000000);
         
         RationalNumber.Factory doubleFact = new DoublePrecisionRationalNumber.Factory();
         RationalNumber.Factory infFact = new InfinitePrecisionRationalNumber.Factory();
-        IPoliticalNetwork politicalNetwork = new PoliticalNetwork(doubleFact,"Finite Precision Random Political Network seed = "+seed,numTh,maxCandParty<100,new IDTierBreaker(),null);       
+        IPoliticalNetwork politicalNetwork = new PoliticalNetwork(doubleFact,"Finite Precision Random Political Network seed = "+seed,numTh,maxCandParty*numParties<50,new IDTierBreaker(),null);       
         REDefinitionListener defListener = new REDefinitionListener();
         IPoliticalNetwork politicalNetworkInfPrec = new PoliticalNetwork(infFact,"Infinite Precision Random Political Network seed = "+seed,numTh,false,new IDTierBreaker(),defListener);        
         
@@ -164,7 +177,7 @@ public class RandomElection
         {    
             int numCandidates = 0;
             PartyData[] partyData = new PartyData[numParties];
-            int numValidVotes = 0;
+            long numValidVotes = 0;
             int maxCandidatesOfAllParties = 0;
                     
             for (int p=0; p<numParties; p++)
@@ -193,7 +206,7 @@ public class RandomElection
                     politicalNetwork.setNumberOfVotes(candId, numCandVotes); 
                     politicalNetworkInfPrec.setNumberOfVotes(candId, numCandVotes); 
                     partyData[p].totalNumberOfVotesOfParty += numCandVotes;
-                    partyData[p].partyCandidates.put(new CandidateOrderKey(numCandVotes,candId),candId);                
+                    partyData[p].partyCandidates.put(new CandidateOrderKey(numCandVotes,candId),politicalNetworkInfPrec.getCandidate(candId));                
                     numValidVotes += numCandVotes;
                 }    
 
@@ -253,7 +266,7 @@ public class RandomElection
                        if (!isSolidCoalition && numNeighbors==0)
                        {
                             if (usedPercentage!=0)
-                                throw new RuntimeException("Percentages don't sum 100%");                       
+                                throw new RuntimeException("Percentages are not zero, when there are no neighbors");                       
                        }    
                        if (usedPercentage!=100 && (isSolidCoalition || numNeighbors!=0))
                            throw new RuntimeException("Percentages don't sum 100%");
@@ -271,6 +284,15 @@ public class RandomElection
             for (int p=0; p<numParties; p++)
                 partyData[p].close(numValidVotes, numSeats);
             
+
+            TIntObjectHashMap<Candidate> infElected = null;
+            if (maxCandidatesOfAllParties < 200) // avoid slow executions
+            {    
+                politicalNetworkInfPrec.processElection();
+                infElected = politicalNetworkInfPrec.getElected();                                
+                for (int p=0; p<numParties; p++)
+                    partyData[p].check(infElected);
+            }    
             
             politicalNetwork.processElection();
             TIntObjectHashMap<Candidate> elected = politicalNetwork.getElected();                                
@@ -279,11 +301,7 @@ public class RandomElection
 
             
             if (maxCandidatesOfAllParties < 200) // avoid slow executions
-            {    
-                politicalNetworkInfPrec.processElection();
-                TIntObjectHashMap<Candidate> infElected = politicalNetworkInfPrec.getElected();                                
-                for (int p=0; p<numParties; p++)
-                    partyData[p].check(infElected);
+            {                    
                 for (Candidate cand:elected.valueCollection())
                     if (!infElected.contains(cand.getIdentifier()))
                         return true;                
@@ -312,9 +330,9 @@ public class RandomElection
     }
     public static void main(String argv[])
     {
-        Random r = new Random(3);
+        Random r = new Random(7);
         
-        RandomElection.runRandomElection(-469827848);
+        //RandomElection.runRandomElection(-1958782853);
         
         int max = 100000;
         int numFails = 0;
@@ -326,7 +344,7 @@ public class RandomElection
             int seed = r.nextInt();
             try
             {    
-                if (RandomElection.runRandomElection(seed))
+                if (RandomElectionTest.runRandomElection(seed))
                 {    
                     System.out.println("\nDivergence with seed "+seed);
                     numDivergences++;

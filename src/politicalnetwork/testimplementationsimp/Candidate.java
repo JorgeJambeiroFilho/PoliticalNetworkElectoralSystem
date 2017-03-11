@@ -2,7 +2,7 @@
  * To change this template, choose Tools | Templates
  * and open the template in the editor.
  */
-package politicalnetwork.testimplementation;
+package politicalnetwork.testimplementationsimp;
 
 import gnu.trove.map.hash.TIntObjectHashMap;
 import politicalnetwork.rationalnumber.RationalNumber;
@@ -25,10 +25,6 @@ public class Candidate
     RationalNumber numberOfCurrentVotes; // current number of votes, considering individual votes and transfers
     TIntObjectHashMap<NeighborhoodRelation> originalNeighbors; // relations to neighbors choosen by the candidate
     TIntObjectHashMap<NeighborhoodRelation> currentNeighbors;  // relations to neighbors after network updates
-    TIntObjectHashMap<Candidate> originalReverseNeighbors;     // candidates which chose this candidate as a neighbor
-    TIntObjectHashMap<Candidate> currentReverseNeighbors;      // candidates to whose neighborsets this candidade belongs after network updates 
-                                                               // this set is kept, so that when it is needed to remove the candidate
-                                                               // from all neighbor sets it is fast to find in which ones the candidate is
     
     RationalNumber numberOfVotesWhenEliminatedOrElected; // number of votes this candidate had in the moment of its elimination or election
     boolean isVirtual; // true for virtual party candidates
@@ -39,7 +35,6 @@ public class Candidate
                 + " votes " + numberOfCurrentVotes.doubleValue()  
                 + (numberOfVotesWhenEliminatedOrElected != null ? " votosdef " + numberOfVotesWhenEliminatedOrElected.doubleValue() : "")
                 + " numNeigh " + (currentNeighbors==null?0:currentNeighbors.size())   
-                + " numRevNeigh " + (currentReverseNeighbors==null ? 0 : currentReverseNeighbors.size())                 
                 ;
     }    
     
@@ -56,9 +51,6 @@ public class Candidate
         originalNeighbors = new TIntObjectHashMap(c.originalNeighbors);        
         if (currentNeighbors!=null)
            currentNeighbors = new TIntObjectHashMap(c.currentNeighbors);
-        originalReverseNeighbors = new TIntObjectHashMap(c.originalReverseNeighbors);
-        if (c.currentReverseNeighbors!=null)
-            currentReverseNeighbors = new TIntObjectHashMap(c.currentReverseNeighbors);
         numberOfVotesWhenEliminatedOrElected = c.numberOfVotesWhenEliminatedOrElected;
         isVirtual = c.isVirtual;                        
     }
@@ -73,7 +65,6 @@ public class Candidate
         this.identifier = identifier;
         this.isVirtual = isVirtual;
         originalNeighbors = new TIntObjectHashMap();
-        originalReverseNeighbors = new TIntObjectHashMap();
     }
 
     /**
@@ -98,14 +89,6 @@ public class Candidate
         originalNeighbors.put(neighbor.identifier, new NeighborhoodRelation(neighbor, percentage));
     }
 
-    /**
-     * Register the fact that this candidate is a neighbor of some other candidate
-     * @param reverseNeighbor The other candidate.
-     */
-    void addReverseNeighbor(Candidate reverseNeighbor)
-    {
-        originalReverseNeighbors.put(reverseNeighbor.identifier, reverseNeighbor);
-    }
 
     /**
      * Prepares a normal candidate or a virtual party candidate for the election.
@@ -121,9 +104,7 @@ public class Candidate
         for (NeighborhoodRelation r:originalNeighbors.valueCollection())
             currentNeighbors.put(r.neighbor.identifier,new NeighborhoodRelation(r));
         if (virtualDiscardCandidate!=null && originalNeighbors.isEmpty())
-             currentNeighbors.put(virtualDiscardCandidate.identifier, new NeighborhoodRelation(virtualDiscardCandidate,numberFactory.valueOf(1, 1)));
-        currentReverseNeighbors = new TIntObjectHashMap(originalReverseNeighbors);
-        
+             currentNeighbors.put(virtualDiscardCandidate.identifier, new NeighborhoodRelation(virtualDiscardCandidate,numberFactory.valueOf(1, 1)));        
     }
     /**
      * Prepares the virtual discard candidate for the election, seting its special status.
@@ -165,15 +146,6 @@ public class Candidate
         return currentNeighbors;
     }
 
-    public TIntObjectHashMap<Candidate> getOriginalReverseNeighbors()
-    {
-        return originalReverseNeighbors;
-    }
-
-    public TIntObjectHashMap<Candidate> getCurrentReverseNeighbors()
-    {
-        return currentReverseNeighbors;
-    }
      
     /**
      * Throws an exception if an inconsistency is detected.
@@ -215,22 +187,8 @@ public class Candidate
                 sum = sum.plus(r.transferPercentage);
                 if (r.neighbor == this)
                     throw new RuntimeException("Neighbor of itself");
-                if (r.neighbor.currentReverseNeighbors==null && r.neighbor.status != ST_VIRTUALDISCARDCANDIDATE)
-                    throw new RuntimeException("Inconsistency between sets of neighbors and reverse neighbors");
-                if (r.neighbor.currentReverseNeighbors!=null && !r.neighbor.currentReverseNeighbors.containsKey(identifier))
-                    throw new RuntimeException("Inconsistency between sets of neighbors and reverse neighbors");
                 if (r.neighbor.status!=Candidate.ST_REMAINING && r.neighbor.status!=Candidate.ST_VIRTUALDISCARDCANDIDATE)                
                     throw new RuntimeException("Non remaining candidate is still in a neighbor set");
-            }
-        }
-        if (currentReverseNeighbors != null)
-        {
-            for (Candidate c : currentReverseNeighbors.valueCollection())
-            {
-                if (c.currentNeighbors != null && !c.currentNeighbors.containsKey(identifier))
-                    throw new RuntimeException("Inconsistency between sets of neighbors and reverse neighbors");
-                if (c.status==Candidate.ST_ELIMINATED)
-                    throw new RuntimeException("Eliminated canddiate kept s a reverse neighbor");
             }
         }
         if (currentNeighbors != null && !currentNeighbors.isEmpty() && !sum.equals(numberFactory.valueOf(1, 1)))
@@ -240,7 +198,7 @@ public class Candidate
     public String toStringWithLinks()
     {
         StringBuffer sb = new StringBuffer();
-        sb.append("" + identifier + "\n");
+        sb.append("" + identifier + "  " +numberOfCurrentVotes + "\n");
         if (currentNeighbors!=null)
             for (NeighborhoodRelation r : currentNeighbors.valueCollection())
                 sb.append("    " + r.neighbor.identifier + "       " + r.transferPercentage.doubleValue() + "\n");
@@ -266,20 +224,23 @@ public class Candidate
         {
             return false;
         }
-        if (currentNeighbors.size() != c.currentNeighbors.size())
-        {
-            return false;
-        }
-        for (NeighborhoodRelation r : currentNeighbors.valueCollection())
-        {
-            NeighborhoodRelation or = c.currentNeighbors.get(r.neighbor.identifier);
-            if (or == null)
+        if (currentNeighbors!=c.currentNeighbors)
+        {    
+            if (currentNeighbors.size() != c.currentNeighbors.size())
             {
                 return false;
             }
-            if (!or.transferPercentage.equals(r.transferPercentage))
+            for (NeighborhoodRelation r : currentNeighbors.valueCollection())
             {
-                return false;
+                NeighborhoodRelation or = c.currentNeighbors.get(r.neighbor.identifier);
+                if (or == null)
+                {
+                    return false;
+                }
+                if (!or.transferPercentage.equals(r.transferPercentage))
+                {
+                    return false;
+                }
             }
         }
         return true;

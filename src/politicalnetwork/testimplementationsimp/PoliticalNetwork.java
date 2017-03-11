@@ -1,4 +1,4 @@
-package politicalnetwork.testimplementation;
+package politicalnetwork.testimplementationsimp;
 
 import gnu.trove.map.hash.THashMap;
 import gnu.trove.map.hash.TIntObjectHashMap;
@@ -17,11 +17,10 @@ import java.util.List;
 public class PoliticalNetwork implements IPoliticalNetwork
 {
     private RationalNumber originalValidNumberOfVotes;
-//    RationalNumber votosValidosCorrentes;
     final private TIntObjectHashMap<Candidate> candidates;
     private TIntObjectHashMap<Candidate> remainingCandidates;
     private TIntObjectHashMap<Candidate> electedCandidates;
-    private TIntObjectHashMap<Candidate> eliminatedCandidates;
+    //private TIntObjectHashMap<Candidate> eliminatedCandidates;
     final private Candidate virtualDiscardCandidate;    
     private RationalNumber currentQuota;
     private RationalNumber numberOfSeats;
@@ -73,6 +72,8 @@ public class PoliticalNetwork implements IPoliticalNetwork
     public String toString()
     {
         StringBuffer sb = new StringBuffer();
+        sb.append(currentQuota);
+        sb.append("\n");
         for (Candidate c:candidates.valueCollection())        
             sb.append(c.toStringWithLinks());
         sb.append(virtualDiscardCandidate.toStringWithLinks());
@@ -95,7 +96,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
         return virtualDiscardCandidate.equals(rp.virtualDiscardCandidate);
     }        
     
-    public TIntObjectHashMap<Candidate> getElected() 
+    public TIntObjectHashMap<Candidate> getElected()
     {
         return electedCandidates;
     }
@@ -122,7 +123,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
         one = numberFactory.valueOf(1,1);
         remainingCandidates = new TIntObjectHashMap();
         electedCandidates = new TIntObjectHashMap();
-        eliminatedCandidates = new TIntObjectHashMap();        
+        //eliminatedCandidates = new TIntObjectHashMap();        
         originalValidNumberOfVotes = zero;
         candidates =  new TIntObjectHashMap();
         virtualDiscardCandidate = new Candidate(0,false);
@@ -140,6 +141,12 @@ public class PoliticalNetwork implements IPoliticalNetwork
         numActive = 0;
         notifyAll();
     }        
+
+    public RationalNumber getCurrentQuota()
+    {
+        return currentQuota;
+    }
+    
     public Candidate getCandidate(int identifier)
     {
         return candidates.get(identifier);
@@ -164,7 +171,6 @@ public class PoliticalNetwork implements IPoliticalNetwork
             throw new RuntimeException("Inexistent candidate "+neighborCandidateIdentifier);
         
          candidate.addNeighbor(neighborCandidate,tranferPercentage);      
-         neighborCandidate.addReverseNeighbor(candidate);
     }        
     public void setNumberOfVotes(int numero,int votosProprios)
     {
@@ -206,7 +212,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
         virtualDiscardCandidate.prepareVirtualDiscardCandidateForProcessingElection(numberFactory);
         remainingCandidates = new TIntObjectHashMap(candidates); // initially all candidates are remaining
         electedCandidates = new TIntObjectHashMap();             // none are elected
-        eliminatedCandidates = new TIntObjectHashMap();          // neither eliminated
+        //eliminatedCandidates = new TIntObjectHashMap();          // neither eliminated
         currentQuota =  originalValidNumberOfVotes.divide(numberOfSeats);        
     }
             
@@ -303,16 +309,19 @@ public class PoliticalNetwork implements IPoliticalNetwork
         {   
             Candidate c = candidates.get(candId);
             defined.put(candId, c);
+            electedCandidates.put(c.identifier, c);
             c.status = Candidate.ST_ELECTED;  
         }
         removeFromNeighborSets(defined);               
+        ArrayList<Candidate> recentlyEliminated = new ArrayList();
         for(Integer candId:eliminated)
         {   
             Candidate c = candidates.get(candId);
             defined.put(candId, c);
+            recentlyEliminated.add(c);
             c.status = Candidate.ST_ELIMINATED;  
         }        
-        transferVotesAndUpdateQuota(new ArrayList(defined.values()));
+        transferVotesAndUpdateQuota(recentlyEliminated);
         for(Integer candId:eliminated)
         {    
            Candidate c = candidates.get(candId); 
@@ -333,7 +342,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
         removeFromNeighborSets(recentlyEliminated);               
         for (Candidate eliminated:recentlyEliminatedList)
         {    
-            eliminatedCandidates.put(eliminated.identifier, eliminated);
+            //eliminatedCandidates.put(eliminated.identifier, eliminated);
             eliminated.status = Candidate.ST_ELIMINATED;        // set the permanent status of the candidate
             eliminated.numberOfVotesWhenEliminatedOrElected = eliminated.numberOfCurrentVotes;
             remainingCandidates.remove(eliminated.identifier);
@@ -407,26 +416,19 @@ public class PoliticalNetwork implements IPoliticalNetwork
     {
         if (c==null)
             throw new RuntimeException("Null candidate");
-        if (c.currentReverseNeighbors==null)
-            throw new RuntimeException("Candidate being removed from neighbor sets without reverse neighbor set");
-        THashSet<Candidate> reverseNeighbors = new THashSet(c.currentReverseNeighbors.valueCollection());
 
         // prepare to make parallel removals, create one removal list for each thread        
         removeEntries = new ArrayList[numTh];
         for (int t=0; t<numTh; t++)
            removeEntries[t] = new ArrayList();            
         int  p = 0;
-        for (Candidate reverseNeighbor:reverseNeighbors)
+        for (Candidate reverseNeighbor:candidates.valueCollection())
         {    
-            if (reverseNeighbor.status!=Candidate.ST_ELIMINATED) 
-            {    
-                removeEntries[p].add(new RemoveEntry(c,reverseNeighbor));                
-                p = (p+1) % numTh;
-            }    
-            else
-                throw new RuntimeException("Eliminated candidate in reverse neighbor set");
+            if (reverseNeighbor.currentNeighbors==null || !reverseNeighbor.currentNeighbors.containsKey(c.identifier))
+                continue;
+            removeEntries[p].add(new RemoveEntry(c,reverseNeighbor));                
+            p = (p+1) % numTh;
         }               
-        // cause threads to remove from neighbor sets but not reverse neighbor sets
         synchronized(this)
         {
             removeState = RS_NEIGHBORS;
@@ -437,39 +439,6 @@ public class PoliticalNetwork implements IPoliticalNetwork
                 try { wait();} catch (InterruptedException ex) {throw new RuntimeException(ex); }
         }    
         
-        // prepare to remove again,now from reverse neighbor sets
-        removeEntries = new ArrayList[numTh];
-        for (int t=0; t<numTh; t++)
-           removeEntries[t] = new ArrayList();
-        
-        p = 0;
-        for (NeighborhoodRelation r:c.currentNeighbors.valueCollection())
-        {
-            Candidate neighbor = r.neighbor;
-            if (neighbor.status!=Candidate.ST_ELIMINATED) 
-            {    
-                removeEntries[p].add(new RemoveEntry(c,neighbor));                
-                p = (p+1) % numTh;
-            }    
-            else
-                throw new RuntimeException("Eliminated candidate in neighbor set");
-        }       
-        // cause threads to remove from reverse neighbor sets
-        synchronized(this)
-        {
-            removeState = RS_REVERSENEIGHBORS;
-            numDone = 0;
-            numActive = 0;
-            notifyAll();
-            while(numDone!=numTh)
-                try { wait();} catch (InterruptedException ex) {throw new RuntimeException(ex); }
-        }   
-        
-        // once the candidate is not a remaining candidate anymore, it will never be removed from neighbor sets again and 
-        // the reverse neighbor set can be cleared
-        // note that the neighbor set, must be kept for elected candidates, because further vote tranfers can occur due
-        // to reductions in the current currentQuota
-        c.currentReverseNeighbors = null;                
     }        
     
     int numTh;
@@ -479,7 +448,6 @@ public class PoliticalNetwork implements IPoliticalNetwork
     
     static final int RS_WAIT = 0;             // nothing is happening in the removal threads
     static final int RS_NEIGHBORS = 1;         // threads are removing a candidate from neighbor sets
-    static final int RS_REVERSENEIGHBORS = 2;   // threads are removing a candidate from reverse neighbor sets
     static final int RS_DONE = 3;             // election is over, threads have ended or are about to end
     static class RemoveEntry
     {        
@@ -554,11 +522,6 @@ public class PoliticalNetwork implements IPoliticalNetwork
                 for (RemoveEntry re:removeEntries[tn])
                     removeFromNeighborsetsWithoutAdjustingReverseNeighbors(re.candidateToBeRemoved,re.candidateFromWhereToRemove);
             }    
-            if (act==RS_REVERSENEIGHBORS)
-            {
-                for (RemoveEntry re:removeEntries[tn])
-                    removeFromReverseNeighborSets(re.candidateToBeRemoved,re.candidateFromWhereToRemove);
-            }   
             synchronized(this)
             {
                 numDone++;
@@ -616,41 +579,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
         }            
         
     }        
-    
-    private void removeFromReverseNeighborSets(Candidate candidateToBeRemoved,Candidate candidateFromWhereToRemove)
-    {
-        // since  the virtual discard candidates is never removed from neighbor sets we don't need to keep track
-        // of which candidates have it as a neighbor
-        if (candidateFromWhereToRemove.status==Candidate.ST_VIRTUALDISCARDCANDIDATE)
-            return;
-        // Eliminated candidates have their reverse neighbor sets cleared, so they cannot appear here.
-        if (candidateFromWhereToRemove.status==Candidate.ST_ELIMINATED)
-            throw new RuntimeException("Adjusting reverse neighbor set of eliminated candidate");
-
-        if (candidateToBeRemoved.status==Candidate.ST_ELIMINATED)
-            throw new RuntimeException("Already eliminated candidate being removed");
-        
-        // since eliminated candidates are never going to be removed again from neighbor sets we don't need to keep track
-        // of which candidates have it as a neighbor        
-        if (candidateFromWhereToRemove.status==Candidate.ST_BEING_ELIMINATED)
-            return;
-                                       
-        if (candidateFromWhereToRemove!=virtualDiscardCandidate && !candidateFromWhereToRemove.currentReverseNeighbors.containsKey(candidateToBeRemoved.identifier))
-            throw new RuntimeException("Inconsistency in neighbor set");
-
-        if (candidateToBeRemoved.currentReverseNeighbors==null)
-            throw new RuntimeException("Candidate being removed does nothave a reverse neighbor set");    
             
-        for (Candidate reverseNeighbor:candidateToBeRemoved.currentReverseNeighbors.valueCollection())            
-           if (reverseNeighbor != candidateFromWhereToRemove)           
-               candidateFromWhereToRemove.currentReverseNeighbors.put(reverseNeighbor.identifier, reverseNeighbor);
-
-        
-        if (candidateToBeRemoved.status==Candidate.ST_BEING_ELIMINATED)
-             candidateFromWhereToRemove.currentReverseNeighbors.remove(candidateToBeRemoved.identifier);
-        
-    }        
-        
     
     static int numRep = 0;
     private void transferVotesAndUpdateQuota(List<Candidate> recentlyEliminated)

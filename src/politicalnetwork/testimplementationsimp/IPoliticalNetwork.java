@@ -2,10 +2,12 @@
  * To change this template, choose Tools | Templates
  * and open the template in the editor.
  */
-package politicalnetwork.testimplementation;
+package politicalnetwork.testimplementationsimp;
 
+import gnu.trove.map.hash.THashMap;
 import gnu.trove.map.hash.TIntObjectHashMap;
 import politicalnetwork.rationalnumber.RationalNumber;
+import java.util.HashMap;
 import java.util.List;
 
 /**
@@ -92,6 +94,8 @@ public interface IPoliticalNetwork
      */
     Candidate getCandidate(int identifier);
 
+    RationalNumber getCurrentQuota();
+    
     /**
      * Indicated the set of elected candidates.
      * @return The set of elected candidates
