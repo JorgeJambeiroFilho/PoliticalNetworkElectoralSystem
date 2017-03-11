@@ -231,8 +231,8 @@ public class PoliticalNetwork implements IPoliticalNetwork
         HashMap<Integer,Candidate> recentlyElected = identifyAndMarkRecentlyElected();
         while (!recentlyElected.isEmpty())
         {            
-            updateNetworkRemovingFromNeighborSets(recentlyElected);                        
-            transferVotesAndUpdateQuota(new ArrayList());                        
+            //updateNetworkRemovingFromNeighborSets(recentlyElected);                        
+            transferVotesAndUpdateQuota(recentlyElected,new ArrayList());                        
             recentlyElected = identifyAndMarkRecentlyElected(); // more candidates can be elected due to vote tranfers and reductions in the current currentQuota
         }    
     }        
@@ -318,17 +318,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
             electedCandidates.put(c.identifier, c);
             c.status = Candidate.ST_ELECTED;  
         }
-        updateNetworkRemovingFromNeighborSets(defined);               
-/*        
-        for(Integer candId:eliminated)
-        {   
-            Candidate c = candidates.get(candId);
-            defined.put(candId, c);
-            recentlyEliminated.add(c);
-            c.status = Candidate.ST_ELIMINATED;  
-        }        
-*/        
-        transferVotesAndUpdateQuota(recentlyEliminated);
+        transferVotesAndUpdateQuota(defined,recentlyEliminated);
         for(Integer candId:eliminated)
         {    
            Candidate c = candidates.get(candId); 
@@ -345,8 +335,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
             eliminated.status = Candidate.ST_ELIMINATED;  
             remainingCandidates.remove(eliminated.identifier);
         }    
-        updateNetworkRemovingFromNeighborSets(recentlyEliminated);               
-        transferVotesAndUpdateQuota(recentlyEliminatedList);                    
+        transferVotesAndUpdateQuota(recentlyEliminated,recentlyEliminatedList);                    
         
         // since eliminated candidates keep zero votes, future transfers originated on them
         // would only be a waste of time, so we clear their neighbor sets.
@@ -356,7 +345,6 @@ public class PoliticalNetwork implements IPoliticalNetwork
 
     private void eliminateVirtualCandidatesAndTranferVotes()
     {
-        //ArrayList<Candidate> candidates = new ArrayList(remainingCandidates.valueCollection()); 
         ArrayList<Candidate> recentlyEliminatedCandidates = new ArrayList(); 
         for (Candidate c:candidates.valueCollection())        
             if (c.isVirtual)
@@ -426,8 +414,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
             notifyAll();
             while (numDone!=numTh)
                 try { wait();} catch (InterruptedException ex) {throw new RuntimeException(ex); }
-        }    
-        
+        }            
     }        
     
     int numTh;
@@ -459,17 +446,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
         }        
         @Override
         public void run()
-        {
-           /* 
-           try
-           {    
-              Thread.sleep(1000);
-           }
-           catch(InterruptedException e)
-           {
-               throw new RuntimeException(e);
-           } 
-            */
+        {     
            try
            {    
               doRemoves(num);
@@ -509,7 +486,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
             if (act==RS_NEIGHBORS)
             {
                 for (RemoveEntry re:removeEntries[tn])
-                    removeFromNeighborsetsWithoutAdjustingReverseNeighbors(re.candidateToBeRemoved,re.candidateFromWhereToRemove);
+                    removeFromNeighborsets(re.candidateToBeRemoved,re.candidateFromWhereToRemove);
             }    
             synchronized(this)
             {
@@ -521,7 +498,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
     }        
 
     
-    private void removeFromNeighborsetsWithoutAdjustingReverseNeighbors(Candidate candidateToBeRemoved,Candidate candidateFromWhereToRemove)
+    private void removeFromNeighborsets(Candidate candidateToBeRemoved,Candidate candidateFromWhereToRemove)
     {
         // Note that only the neighborset of the candidateFromWhereToRemove is submitted to any changes.
         // This means that this method can be called several time in parallel, as long as the vakue of
@@ -568,25 +545,32 @@ public class PoliticalNetwork implements IPoliticalNetwork
         }            
         
     }        
-            
-    
-    static int numRep = 0;
-    private void transferVotesAndUpdateQuota(List<Candidate> recentlyEliminated)
+
+    /**
+     * Transfer votes. Vote discards occur through transfers to the virtual discard candiate.
+     * 
+     * @param recentlyDefined   The candidates that have just had their stated defined as elected or eliminated.
+     * @param recentlyEliminated 
+     */
+    private void transferVotesAndUpdateQuota(HashMap<Integer,Candidate> recentlyDefined,List<Candidate> recaentlyEliminated)
     {     
-       
+        updateNetworkRemovingFromNeighborSets(recentlyDefined);   
         
         TemporaryDataForTranfersUsingOriginalStructure dt = checkConvergenceAndMakeExtraConsistencyTests ? new TemporaryDataForTranfersUsingOriginalStructure(): null;       
         
         
          // The parameter recentlyEliminated avoids having to loop over all eliminated candidates to find which ones still have votes.
         RationalNumber sumVP = numberFactory.valueOf(0, 1);
-        for (Candidate c:recentlyEliminated)
+        for (Candidate c:recentlyDefined.values())  //recentlyEliminated)
         {    
-            RationalNumber v = c.numberOfCurrentVotes;
-            NeighborhoodRelation rDiscard = c.currentNeighbors.get(virtualDiscardCandidate.identifier);
-            RationalNumber p = rDiscard==null ? zero : rDiscard.transferPercentage;
-            RationalNumber vp = v.times(p);
-            sumVP = sumVP.plus(vp);
+            if (c.status==Candidate.ST_ELIMINATED)
+            {    
+                RationalNumber v = c.numberOfCurrentVotes;
+                NeighborhoodRelation rDiscard = c.currentNeighbors.get(virtualDiscardCandidate.identifier);
+                RationalNumber p = rDiscard==null ? zero : rDiscard.transferPercentage;
+                RationalNumber vp = v.times(p);
+                sumVP = sumVP.plus(vp);
+            }
         }
         // It is necessary to loop over all elected candidates, not only the recently elected anyway 
         RationalNumber sumP = numberFactory.valueOf(0, 1);                
@@ -618,7 +602,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
             newQuota = currentQuota;            
         }    
         
-        transferVotesAccordingToQuota(newQuota, recentlyEliminated);
+        transferVotesAccordingToQuota(newQuota,recentlyDefined); //recentlyEliminated);
         
         currentQuota = newQuota;
 
@@ -630,10 +614,14 @@ public class PoliticalNetwork implements IPoliticalNetwork
     }    
         
         
-    private void transferVotesAccordingToQuota(RationalNumber newQuota, List<Candidate> recentlyEliminated)
+    private void transferVotesAccordingToQuota(RationalNumber newQuota, HashMap<Integer,Candidate> recentlyDefined)//List<Candidate> recentlyEliminated)
     {        
         HashSet<Candidate> candidatesWithTransferrableVotes = new HashSet();
-        candidatesWithTransferrableVotes.addAll(recentlyEliminated);
+        //candidatesWithTransferrableVotes.addAll(recentlyEliminated);
+        for (Candidate c:recentlyDefined.values())
+            if (c.status==Candidate.ST_ELIMINATED)
+               candidatesWithTransferrableVotes.add(c);
+            
         for (Candidate c:electedCandidates.valueCollection())
            if (c.numberOfCurrentVotes.compareTo(newQuota)>=0) 
               candidatesWithTransferrableVotes.add(c);
@@ -648,8 +636,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
                         throw new RuntimeException("Votes being tranferred to non remanining candidate");
             }        
             c.numberOfCurrentVotes = c.numberOfCurrentVotes.minus(transferrableVotes);
-        }    
-        
+        }            
     }        
 
     

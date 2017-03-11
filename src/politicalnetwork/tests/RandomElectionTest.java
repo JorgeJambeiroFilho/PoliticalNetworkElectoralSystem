@@ -329,7 +329,7 @@ public class RandomElectionTest
     }
     public static void main(String argv[])
     {
-        Random r = new Random(8);
+        Random r = new Random(9);
         
         //RandomElection.runRandomElection(-1958782853);
         
