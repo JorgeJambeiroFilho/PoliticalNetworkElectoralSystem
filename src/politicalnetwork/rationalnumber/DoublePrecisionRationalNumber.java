@@ -27,7 +27,7 @@ public class DoublePrecisionRationalNumber implements RationalNumber
             double dif = Math.abs(v1.doubleValue()-v2.doubleValue());
             if (dif > maxError)
                 maxError = dif;
-            return dif < 1e-8 * (v1.doubleValue()+v2.doubleValue());
+            return dif==0 || dif < 1e-8 * (v1.doubleValue()+v2.doubleValue());
         }        
         
     }    

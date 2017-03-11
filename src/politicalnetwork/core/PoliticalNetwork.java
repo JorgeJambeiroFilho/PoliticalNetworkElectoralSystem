@@ -1,8 +1,6 @@
 package politicalnetwork.core;
 
-import gnu.trove.map.hash.THashMap;
 import gnu.trove.map.hash.TIntObjectHashMap;
-import gnu.trove.set.hash.THashSet;
 import politicalnetwork.rationalnumber.RationalNumber;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -11,23 +9,31 @@ import java.util.Iterator;
 import java.util.List;
 
 /**
+ * This class implementats the political network election system.
  * 
- * @author Removed for Blind Review
+ * 
+ * @author Removed for blind review
  */
 public class PoliticalNetwork implements IPoliticalNetwork
 {
+    // Data related to the original structure of the political network
     private RationalNumber originalValidNumberOfVotes;
+    private RationalNumber numberOfSeats;    
     final private TIntObjectHashMap<Candidate> candidates;
+    
+    // Data related to the status of the political netowork
     private TIntObjectHashMap<Candidate> remainingCandidates;
     private TIntObjectHashMap<Candidate> electedCandidates;
-    //private TIntObjectHashMap<Candidate> eliminatedCandidates;
     final private Candidate virtualDiscardCandidate;    
     private RationalNumber currentQuota;
-    private RationalNumber numberOfSeats;
+
+    // Helper variables to handle rational numbers
     final private RationalNumber.Factory numberFactory;  // To allow numbers to be created using the correct class
     final private RationalNumber zero; // useful constant
     final private RationalNumber one;  // useful constant
-    final boolean checkConvergence;
+    
+    // True if this the election should be accompanied by convergence tests and extra consistency tests
+    final boolean checkConvergenceAndMakeExtraConsistencyTests;
 
     public interface TieBreaker
     {
@@ -35,8 +41,8 @@ public class PoliticalNetwork implements IPoliticalNetwork
          * Compares two candidates that have exactly the same number of votes.
          * @param id1
          * @param id2
-         * @return -1 if the first candidate is less prefered than the second
-         *         +1 if the first candidate is prefered than the second
+         * @return -1 if the first candidate is less prefered to be elected than the second
+         *         +1 if the first candidate is prefered to be elected than the second
          *          0 only if the two candidates are the same
          */
         int compare(int id1,int id2);
@@ -50,18 +56,17 @@ public class PoliticalNetwork implements IPoliticalNetwork
             if (id2 < id1) return 1;
             return 0;
         }
-        
     }
     
     public interface DefinitionListener
     {
         /**
-         * Register that a candidate was eleted or eliminated.
-         * This allow external monitoring of the election and thus to debug code, for example,
+         * Registers that a candidate was elected or eliminated by the election algorithm.
+         * This allows external monitoring of the election and thus to helps to debug code, for example,
          * checking for violations of solid coalition guarantees.
          * 
          * @param candidate
-         * @param elected Treu if the candidate was elected. False if eliminated.
+         * @param elected True if the candidate was elected. False if eliminated.
          */
         void registerDefinition(Candidate candidate, boolean elected);
     }
@@ -81,19 +86,21 @@ public class PoliticalNetwork implements IPoliticalNetwork
     }        
     @Override
     public boolean equals(Object o)
-    {
-        PoliticalNetwork rp = (PoliticalNetwork)o;
-        if (rp.candidates.size()!=candidates.size())
+    {        
+        PoliticalNetwork otherPoliticalNetwork = (PoliticalNetwork)o;
+        if (otherPoliticalNetwork.candidates.size()!=candidates.size())
+            return false;
+        if (!currentQuota.equals(otherPoliticalNetwork.currentQuota))
             return false;
         for (Candidate c:candidates.valueCollection())
         {
-            Candidate oc = rp.getCandidate(c.identifier);
+            Candidate oc = otherPoliticalNetwork.getCandidate(c.identifier);
             if (oc==null)
                 return false;
             if (!c.equals(oc))
                 return false;
         }    
-        return virtualDiscardCandidate.equals(rp.virtualDiscardCandidate);
+        return virtualDiscardCandidate.equals(otherPoliticalNetwork.virtualDiscardCandidate);
     }        
     
     public TIntObjectHashMap<Candidate> getElected()
@@ -104,26 +111,26 @@ public class PoliticalNetwork implements IPoliticalNetwork
         
     /**
      * Creates an empty political network.
-     * @param numberFactory Allows number to be created using the correct class
+     * @param numberFactory Allows numbers to be created using the correct class
      * @param name A name to be displayed when necessary
-     * @param numTh The number of thread that should be used when the election starts to be processed.
-     * @param checkConvergence If true vote transfer processes are also performed iteractively using the original
-     *                         network structure and the results are compared to the exact ones obtained with the
-     *                         modified structure to see if they are converging to the right place 
+     * @param numTh The number of threads that should be used when the election starts to be processed.
+     * @param checkConvergenceAndMakeExtraConsistencyTests If true vote transfer processes are also performed iteractively using the original
+     *                                                     network structure and the results are compared to the exact ones obtained with the
+     *                                                     modified structure to see if they are converging to the right place .
+     *                                                     Extra consistency tests are also performed at each round of the election 
      * @param definitionListener A listener to be warned of elections and eliminations while they happen
      * @param tieBreaker A breaker for eventual ties when candidates are about to be eliminated
      */
-    public PoliticalNetwork(RationalNumber.Factory numberFactory,String name,int numTh,boolean checkConvergence,TieBreaker tieBreaker,DefinitionListener definitionListener)
+    public PoliticalNetwork(RationalNumber.Factory numberFactory,String name,int numTh,boolean checkConvergenceAndMakeExtraConsistencyTests,TieBreaker tieBreaker,DefinitionListener definitionListener)
     {
         this.tieBreaker = tieBreaker;
         this.definitionListener = definitionListener;
-        this.checkConvergence = checkConvergence;
+        this.checkConvergenceAndMakeExtraConsistencyTests = checkConvergenceAndMakeExtraConsistencyTests;
         this.numberFactory = numberFactory;
         zero = numberFactory.valueOf(0,1);
         one = numberFactory.valueOf(1,1);
         remainingCandidates = new TIntObjectHashMap();
         electedCandidates = new TIntObjectHashMap();
-        //eliminatedCandidates = new TIntObjectHashMap();        
         originalValidNumberOfVotes = zero;
         candidates =  new TIntObjectHashMap();
         virtualDiscardCandidate = new Candidate(0,false);
@@ -135,7 +142,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
     }        
     public synchronized void close()
     {
-        // This ends some threads
+        // This ends the remover threads
         removeState = RS_DONE;
         numDone=0;
         numActive = 0;
@@ -185,10 +192,11 @@ public class PoliticalNetwork implements IPoliticalNetwork
     
     public void checkConsistency(boolean areTransfersComplete)
     {
-        if (true) return;
+        if (!checkConvergenceAndMakeExtraConsistencyTests)
+            return;
         RationalNumber currentNumberOfValidVotesFromQuota = currentQuota.times(numberOfSeats);
         RationalNumber currentNumberOfValidVotesFromDiscards = originalValidNumberOfVotes.minus(virtualDiscardCandidate.numberOfCurrentVotes);
-        if (!currentNumberOfValidVotesFromDiscards.equals(currentNumberOfValidVotesFromQuota))
+        if (!numberFactory.isClose(currentNumberOfValidVotesFromDiscards,currentNumberOfValidVotesFromQuota))
             throw new RuntimeException("Inconsistent current quota");
         RationalNumber  currentNumberOfValidVotesFromSum = zero;        
         for (Candidate c: candidates.valueCollection())
@@ -196,12 +204,14 @@ public class PoliticalNetwork implements IPoliticalNetwork
             c.checkConsistency(currentQuota,numberFactory,areTransfersComplete);
             currentNumberOfValidVotesFromSum = currentNumberOfValidVotesFromSum.plus(c.numberOfCurrentVotes);
         }
-        if (!currentNumberOfValidVotesFromSum.equals(currentNumberOfValidVotesFromDiscards))
+        if (!numberFactory.isClose(currentNumberOfValidVotesFromSum,currentNumberOfValidVotesFromDiscards))
             throw new RuntimeException("Inconsistent number of valid votes");
     }        
     
-    
-    public void prepareToProcess()
+    /**
+     * Sets the initial state of the network. Should be called after all parameters have been set.
+     */
+    private void prepareToProcess()
     {
         originalValidNumberOfVotes = zero;
         for (Candidate c:candidates.valueCollection())
@@ -212,30 +222,47 @@ public class PoliticalNetwork implements IPoliticalNetwork
         virtualDiscardCandidate.prepareVirtualDiscardCandidateForProcessingElection(numberFactory);
         remainingCandidates = new TIntObjectHashMap(candidates); // initially all candidates are remaining
         electedCandidates = new TIntObjectHashMap();             // none are elected
-        //eliminatedCandidates = new TIntObjectHashMap();          // neither eliminated
         currentQuota =  originalValidNumberOfVotes.divide(numberOfSeats);        
     }
             
-    public void processElection()
+    public void processElectionOld()
     {
         prepareToProcess();        
         eliminateVirtualCandidatesAndTranferVotes();
-        checkConsistency(true);
+        checkConsistency(false);
         identifyElectedAndTransferVotes();
         checkConsistency(true);
-        //System.out.println("electedCandidates: "+electedCandidates.size()+" eliminatedCandidates: "+eliminatedCandidates.size()+" remainingCandidates: "+remainingCandidates.size());
         while (!remainingCandidates.isEmpty())
         {
             checkConsistency(true);
             eliminateCandidateWithLeastVotesTranferAndDiscardVotes();
             checkConsistency(false);
             identifyElectedAndTransferVotes();
-            RationalNumber votosValidosCorrentes = originalValidNumberOfVotes.minus(virtualDiscardCandidate.getNumberOfCurrentVotes());
-            //System.out.println("electedCandidates: "+electedCandidates.size()+" eliminatedCandidates: "+eliminatedCandidates.size()+" remainingCandidates: "+remainingCandidates.size()+" votosValidos "+votosValidosCorrentes);
         }            
         if (electedCandidates.size()!=numberOfSeats.doubleValue())
             throw new RuntimeException("Number of elected candidates does not match the number of seats "+electedCandidates.size() + " <> " + numberOfSeats.doubleValue());
     }        
+
+    public void processElection()
+    {
+        prepareToProcess();        
+        eliminateVirtualCandidatesAndTranferVotes();
+        checkConsistency(false);
+        while (!remainingCandidates.isEmpty())
+        {
+            
+            identifyElectedAndTransferVotes();
+            checkConsistency(true);
+            if (!remainingCandidates.isEmpty())            
+            {
+                eliminateCandidateWithLeastVotesTranferAndDiscardVotes();
+                checkConsistency(false);
+            }
+        }            
+        if (electedCandidates.size()!=numberOfSeats.doubleValue())
+            throw new RuntimeException("Number of elected candidates does not match the number of seats "+electedCandidates.size() + " <> " + numberOfSeats.doubleValue());
+    }        
+    
     
     private HashMap<Integer,Candidate> identifyRecentlyElected()
     {
@@ -249,7 +276,6 @@ public class PoliticalNetwork implements IPoliticalNetwork
                 recentlyElected.put(c.identifier,c);
                 electedCandidates.put(c.identifier, c);
                 c.status = Candidate.ST_ELECTED;
-                c.numberOfVotesWhenEliminatedOrElected = c.numberOfCurrentVotes;
                 i.remove();
                 if (definitionListener!=null)
                     definitionListener.registerDefinition(c, true);                
@@ -266,7 +292,6 @@ public class PoliticalNetwork implements IPoliticalNetwork
                 recentlyElected.put(c.identifier,c);
                 electedCandidates.put(c.identifier, c);
                 c.status = Candidate.ST_ELECTED;
-                c.numberOfVotesWhenEliminatedOrElected = c.numberOfCurrentVotes;
                 i.remove();
                 if (definitionListener!=null)
                     definitionListener.registerDefinition(c, true);
@@ -282,15 +307,8 @@ public class PoliticalNetwork implements IPoliticalNetwork
         HashMap<Integer,Candidate> recentlyElected = identifyRecentlyElected();
         while (!recentlyElected.isEmpty())
         {            
-            removeFromNeighborSets(recentlyElected);
-            
-            //if (numberOfSeats.equals(numberFactory.valueOf(electedCandidates.size(),1)))
-            // we could break the election here, since the elected candidates are defined, but
-            // we preferred to let the last vote transfer go on and commented out the command
-            //    break;
-            
-            transferVotesAndUpdateQuota(new ArrayList());            
-            
+            removeFromNeighborSets(recentlyElected);                        
+            transferVotesAndUpdateQuota(new ArrayList());                        
             // more candidates can be elected due to vote tranfers and reductions in the current currentQuota
             recentlyElected = identifyRecentlyElected();
         }    
@@ -346,7 +364,6 @@ public class PoliticalNetwork implements IPoliticalNetwork
         {    
             //eliminatedCandidates.put(eliminated.identifier, eliminated);
             eliminated.status = Candidate.ST_ELIMINATED;        // set the permanent status of the candidate
-            eliminated.numberOfVotesWhenEliminatedOrElected = eliminated.numberOfCurrentVotes;
             remainingCandidates.remove(eliminated.identifier);
             if (definitionListener!=null)
                 definitionListener.registerDefinition(eliminated, false);
@@ -588,7 +605,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
     {     
        
         
-        TemporaryDataForTranfersUsingOriginalStructure dt = checkConvergence ? new TemporaryDataForTranfersUsingOriginalStructure(): null;       
+        TemporaryDataForTranfersUsingOriginalStructure dt = checkConvergenceAndMakeExtraConsistencyTests ? new TemporaryDataForTranfersUsingOriginalStructure(): null;       
         
         
          // The parameter recentlyEliminated avoids having to loop over all eliminated candidates to find which ones still have votes.

@@ -1,7 +1,3 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
 package politicalnetwork.core;
 
 import gnu.trove.map.hash.TIntObjectHashMap;
@@ -10,6 +6,7 @@ import java.util.List;
 
 /**
  * This is the interface supported by the PoliticalNetwork class.
+ * 
  * 
  */
 public interface IPoliticalNetwork
@@ -53,42 +50,18 @@ public interface IPoliticalNetwork
      * @param individualVotes Number of votes received.
      */
     void setNumberOfVotes(int candidateIdentifier, int individualVotes);
-
-
-    /**
-     * After all information about the network has been registerd by calls to
-     * addVirtualCandidate, addCandidate, addNeighborRelationship, setNumberOfSeats and 
-     * setNumberOfVotes, a call to  prepareToProcess prepares the network to process an election. 
-     * After this call, the refered methods should not be called again.
-     * 
-     * Calling this method is unnecessary in an election process beacause the method 
-     * processElection() already class it. However, for tests that don't actually run the election
-     * like 
-     * 
-     */
-    //void prepareToProcess();
     
     /**
      * Process the election determining the elected candidates.
      */
     void processElection();
-
-    /**
-     * Performas arbitrary removal of candidates from vote tranfer paths to allow the analysis of the 
-     * resulting network structure.
-     * @param identifier 
-     */
-    //void removeFromAllNeighborSets(int identifier);
-    
-    /**
-     * Raises an exception if any inconsistency is detected.
-     * @param areTransfersComplete 
-     */
-    void checkConsistency(boolean areTransfersComplete);
-
-    
+   
     /**
      * Checks if this political network is equal to another political network.
+     * Neighbor sets, percentages of transfer, current quota, current status of each candidate,
+     * and current number of votes of each candidate are considered.
+     * This method is used to test the insensibility to the order of elections and eliminations.
+     * 
      * @param o The other political network
      * @return True if the networks are equal.
      */
@@ -101,19 +74,24 @@ public interface IPoliticalNetwork
      */
     Candidate getCandidate(int identifier);
 
+    /**
+     * Find the current quota.
+     * @return The current quota.
+     */
     RationalNumber getCurrentQuota();
     
     /**
-     * Indicated the set of elected candidates.
+     * Indicates the set of elected candidates.
      * @return The set of elected candidates
      */
     TIntObjectHashMap<Candidate> getElected();
 
     /**
      * Define the state of candidates regardless of usual election rules.
-     * This method is used to test the insensibility to the order of elimination and election.
-     * @param eliminated candidates to eliminate
-     * @param eliminated candidates to elect
+     * This method is used to test the insensibility to the order of elimination and election. It is also helpful to generate
+     * views of the network, where some candidates have beeen removed from vote transfer paths.
+     * @param eliminated Candidates to eliminate
+     * @param elected Candidates to elect
      */
     public void defineStatusOfArbitraryCandidates(List<Integer> eliminated,List<Integer> elected);
     

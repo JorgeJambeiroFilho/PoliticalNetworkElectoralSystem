@@ -1,14 +1,13 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
 package politicalnetwork.core;
 
 import politicalnetwork.rationalnumber.RationalNumber;
 
 /**
- *
- * @author jesjf
+ * This class represents a neighborhood relationship. 
+ * 
+ * Is is just a pointer to the neighbor and the percentage of transfer.
+ * 
+ * @author Removed for blind review
  */
 public class NeighborhoodRelation
 {

@@ -1,7 +1,3 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
 package politicalnetwork.core;
 
 import gnu.trove.map.hash.TIntObjectHashMap;
@@ -10,36 +6,47 @@ import politicalnetwork.rationalnumber.RationalNumber;
 /**
  * Class to represent a candidate and to store data related to a candidate.
  * 
- * @author Removed for Blind Review
+ * @author Removed for blind review
  */
 public class Candidate
 {
+    // Initial data about the candidate
     int identifier;
+    boolean isVirtual; // true for virtual party candidates
+    RationalNumber numberOfIndividualVotes; // number of votes received directly from the electors
+    TIntObjectHashMap<NeighborhoodRelation> originalNeighbors; // relations to neighbors choosen by the candidate
+    
+    // Data related to the state of the candidate
     public static final int ST_REMAINING = 0;
     public static final int ST_ELECTED = 1;
     public static final int ST_ELIMINATED = 2;
-    public static final int ST_VIRTUALDISCARDCANDIDATE = 3; // Special permanet state for the virtual discard candidate
+    public static final int ST_VIRTUALDISCARDCANDIDATE = 3; // Special permanent state for the virtual discard candidate
     public static final int ST_BEING_ELIMINATED = 4; // Temporary status for a candidate that has just been choosen for elimination, that lasts till everything reflects the elimination
     int status;
-    RationalNumber numberOfIndividualVotes; // number of votes received directly from the electors
-    RationalNumber numberOfCurrentVotes; // current number of votes, considering individual votes and transfers
-    TIntObjectHashMap<NeighborhoodRelation> originalNeighbors; // relations to neighbors choosen by the candidate
+    RationalNumber numberOfCurrentVotes; // current number of votes, considering individual votes and transfers    
     TIntObjectHashMap<NeighborhoodRelation> currentNeighbors;  // relations to neighbors after network updates
     
-    RationalNumber numberOfVotesWhenEliminatedOrElected; // number of votes this candidate had in the moment of its elimination or election
-    boolean isVirtual; // true for virtual party candidates
 
     public String toString()
     {
         return "identifier " + identifier + " status " + status 
                 + " votes " + numberOfCurrentVotes.doubleValue()  
-                + (numberOfVotesWhenEliminatedOrElected != null ? " votosdef " + numberOfVotesWhenEliminatedOrElected.doubleValue() : "")
-                + " numNeigh " + (currentNeighbors==null?0:currentNeighbors.size())   
+                + " numNeighbors " + (currentNeighbors==null?0:currentNeighbors.size())   
                 ;
     }    
+    public String toStringWithLinks()
+    {
+        StringBuffer sb = new StringBuffer();
+        sb.append("" + identifier + " status " + status  + "  " +numberOfCurrentVotes + "\n");
+        if (currentNeighbors!=null)
+            for (NeighborhoodRelation r : currentNeighbors.valueCollection())
+                sb.append("    " + r.neighbor.identifier + "       " + r.transferPercentage.doubleValue() + "\n");
+        return sb.toString();
+    }
+    
     
     /**
-     *  Copies a candiate for testting purposes
+     *  Copies a candidate for testing purposes
      * @param c The candidate to be copied
      */
     Candidate(Candidate c)
@@ -51,7 +58,6 @@ public class Candidate
         originalNeighbors = new TIntObjectHashMap(c.originalNeighbors);        
         if (currentNeighbors!=null)
            currentNeighbors = new TIntObjectHashMap(c.currentNeighbors);
-        numberOfVotesWhenEliminatedOrElected = c.numberOfVotesWhenEliminatedOrElected;
         isVirtual = c.isVirtual;                        
     }
      
@@ -95,7 +101,7 @@ public class Candidate
      * Initial current values are stablished.
      * @param virtualDiscardCandidate The virtual discard candidate, for the case it needs to be added to an empty
      *                                neighbor set.
-     * @param numberFactory Allows number to be created here using the  correct class
+     * @param numberFactory Allows numbers to be created here using the correct class
      */
     void prepareForProcessingElection(Candidate virtualDiscardCandidate,RationalNumber.Factory numberFactory)
     {
@@ -165,17 +171,17 @@ public class Candidate
      */    
     void checkConsistency(RationalNumber currentQuota, RationalNumber.Factory numberFactory,boolean areTransfersComplete)
     {
-        if (status == ST_ELECTED && !numberOfCurrentVotes.equals(currentQuota))
+        if (status == ST_ELECTED && !numberFactory.isClose(currentQuota,  numberOfCurrentVotes))
         {
             throw new RuntimeException("Candidate marked as elected, but with number of votes that differs from the current quota");
         }
         else 
-        if (status == ST_ELIMINATED && !numberOfCurrentVotes.equals(numberFactory.valueOf(0, 1)))
+        if (status == ST_ELIMINATED && !numberFactory.isClose(numberOfCurrentVotes,numberFactory.valueOf(0, 1)))
         {
             throw new RuntimeException("Candidate marked as elected, but with non zero number of votes");
         }
         else 
-        if (areTransfersComplete && status == ST_REMAINING && !isVirtual && numberOfCurrentVotes.compareTo(currentQuota) >= 0)
+        if (areTransfersComplete && status == ST_REMAINING &&  numberOfCurrentVotes.compareTo(currentQuota) >= 0) 
         {
             throw new RuntimeException("Remaining candidate with number of votes greater or equal to the current quota");
         }
@@ -191,19 +197,10 @@ public class Candidate
                     throw new RuntimeException("Non remaining candidate is still in a neighbor set");
             }
         }
-        if (currentNeighbors != null && !currentNeighbors.isEmpty() && !sum.equals(numberFactory.valueOf(1, 1)))
+        if (currentNeighbors != null && !currentNeighbors.isEmpty() && !numberFactory.isClose(sum, numberFactory.valueOf(1, 1))) //  sum.equals(numberFactory.valueOf(1, 1)))
             throw new RuntimeException("Percentages of tranfer don't sum one");
     }
 
-    public String toStringWithLinks()
-    {
-        StringBuffer sb = new StringBuffer();
-        sb.append("" + identifier + "  " +numberOfCurrentVotes + "\n");
-        if (currentNeighbors!=null)
-            for (NeighborhoodRelation r : currentNeighbors.valueCollection())
-                sb.append("    " + r.neighbor.identifier + "       " + r.transferPercentage.doubleValue() + "\n");
-        return sb.toString();
-    }
 
     public boolean equals(Object o)
     {
@@ -246,10 +243,6 @@ public class Candidate
         return true;
     }
 
-    public RationalNumber getNumberOfVotesWhenEliminatedOrElected()
-    {
-        return numberOfVotesWhenEliminatedOrElected;
-    }
 
     public boolean isVirtual()
     {

@@ -6,7 +6,6 @@ package politicalnetwork.tests;
 
 import gnu.trove.map.hash.THashMap;
 import gnu.trove.map.hash.TIntObjectHashMap;
-import java.util.ArrayList;
 import java.util.Map.Entry;
 import politicalnetwork.core.PoliticalNetwork;
 import politicalnetwork.core.IPoliticalNetwork;
@@ -152,7 +151,7 @@ public class RandomElectionTest
      * numbers. If there is a divergence among the two results the method returns true
      * 
      * For elections with at most 50 candidates, vote transfers are also run iteractively to test convergence.
-     *      * 
+     *       
      * @param seed The seed for the random number generator. With the same seed, the same random election is executed.
      * @return True if there is a divergenge between finite and infinite precision results, what is possible, but very difficult .
      */
@@ -330,7 +329,7 @@ public class RandomElectionTest
     }
     public static void main(String argv[])
     {
-        Random r = new Random(7);
+        Random r = new Random(8);
         
         //RandomElection.runRandomElection(-1958782853);
         

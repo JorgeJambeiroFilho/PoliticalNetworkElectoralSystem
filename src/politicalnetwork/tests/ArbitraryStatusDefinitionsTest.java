@@ -131,13 +131,13 @@ public class ArbitraryStatusDefinitionsTest
             int[] defCandidates = getRandomIntsWithoutRepetitions(numCandidates,numDefCand,rand);
             boolean[] status = new boolean[numDefCand];
             
-            RationalNumber q =  infFact.valueOf(numValidVotes, numSeats); //  politicalNetwork1.getCurrentQuota();
+            RationalNumber q =  infFact.valueOf(numValidVotes, numSeats); 
             for (int t=0; t<numDefCand; t++)
             {    
                 Candidate c = politicalNetwork1.getCandidate(defCandidates[t]);
                 if (c==null)
                     throw new RuntimeException("Candidate not found");
-                RationalNumber v = c.getNumberOfIndividualVotes();//  getNumberOfCurrentVotes();
+                RationalNumber v = c.getNumberOfIndividualVotes(); 
                 status[t] = v.compareTo(q) >= 0;
             }
             
