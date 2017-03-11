@@ -21,7 +21,6 @@ public class Candidate
     public static final int ST_ELECTED = 1;
     public static final int ST_ELIMINATED = 2;
     public static final int ST_VIRTUALDISCARDCANDIDATE = 3; // Special permanent state for the virtual discard candidate
-    public static final int ST_BEING_ELIMINATED = 4; // Temporary status for a candidate that has just been choosen for elimination, that lasts till everything reflects the elimination
     int status;
     RationalNumber numberOfCurrentVotes; // current number of votes, considering individual votes and transfers    
     TIntObjectHashMap<NeighborhoodRelation> currentNeighbors;  // relations to neighbors after network updates

@@ -225,24 +225,19 @@ public class PoliticalNetwork implements IPoliticalNetwork
         currentQuota =  originalValidNumberOfVotes.divide(numberOfSeats);        
     }
             
-    public void processElectionOld()
-    {
-        prepareToProcess();        
-        eliminateVirtualCandidatesAndTranferVotes();
-        checkConsistency(false);
-        identifyElectedAndTransferVotes();
-        checkConsistency(true);
-        while (!remainingCandidates.isEmpty())
-        {
-            checkConsistency(true);
-            eliminateCandidateWithLeastVotesTranferAndDiscardVotes();
-            checkConsistency(false);
-            identifyElectedAndTransferVotes();
-        }            
-        if (electedCandidates.size()!=numberOfSeats.doubleValue())
-            throw new RuntimeException("Number of elected candidates does not match the number of seats "+electedCandidates.size() + " <> " + numberOfSeats.doubleValue());
-    }        
 
+    private void identifyElectedAndTransferVotes()
+    {
+        HashMap<Integer,Candidate> recentlyElected = identifyAndMarkRecentlyElected();
+        while (!recentlyElected.isEmpty())
+        {            
+            updateNetworkRemovingFromNeighborSets(recentlyElected);                        
+            transferVotesAndUpdateQuota(new ArrayList());                        
+            recentlyElected = identifyAndMarkRecentlyElected(); // more candidates can be elected due to vote tranfers and reductions in the current currentQuota
+        }    
+    }        
+    
+    
     public void processElection()
     {
         prepareToProcess();        
@@ -264,7 +259,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
     }        
     
     
-    private HashMap<Integer,Candidate> identifyRecentlyElected()
+    private HashMap<Integer,Candidate> identifyAndMarkRecentlyElected()
     {
         boolean last = remainingCandidates.size() + electedCandidates.size() == numberOfSeats.doubleValue(); 
         HashMap<Integer,Candidate> recentlyElected = new HashMap();
@@ -302,28 +297,19 @@ public class PoliticalNetwork implements IPoliticalNetwork
     }        
             
     
-    private void identifyElectedAndTransferVotes()
-    {
-        HashMap<Integer,Candidate> recentlyElected = identifyRecentlyElected();
-        while (!recentlyElected.isEmpty())
-        {            
-            removeFromNeighborSets(recentlyElected);                        
-            transferVotesAndUpdateQuota(new ArrayList());                        
-            // more candidates can be elected due to vote tranfers and reductions in the current currentQuota
-            recentlyElected = identifyRecentlyElected();
-        }    
-    }        
 
     public void defineStatusOfArbitraryCandidates(List<Integer> eliminated,List<Integer> elected)
     {
         if (currentQuota==null)
             prepareToProcess(); // when this method is called for the first time, the network needs to be prepared.
         HashMap<Integer,Candidate> defined = new HashMap();
+        ArrayList<Candidate> recentlyEliminated = new ArrayList();
         for(Integer candId:eliminated)
         {   
             Candidate c = candidates.get(candId);
             defined.put(candId, c);
-            c.status = Candidate.ST_BEING_ELIMINATED;  
+            c.status = Candidate.ST_ELIMINATED;  
+            recentlyEliminated.add(c);
         }
         for(Integer candId:elected)
         {   
@@ -332,8 +318,8 @@ public class PoliticalNetwork implements IPoliticalNetwork
             electedCandidates.put(c.identifier, c);
             c.status = Candidate.ST_ELECTED;  
         }
-        removeFromNeighborSets(defined);               
-        ArrayList<Candidate> recentlyEliminated = new ArrayList();
+        updateNetworkRemovingFromNeighborSets(defined);               
+/*        
         for(Integer candId:eliminated)
         {   
             Candidate c = candidates.get(candId);
@@ -341,6 +327,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
             recentlyEliminated.add(c);
             c.status = Candidate.ST_ELIMINATED;  
         }        
+*/        
         transferVotesAndUpdateQuota(recentlyEliminated);
         for(Integer candId:eliminated)
         {    
@@ -355,21 +342,10 @@ public class PoliticalNetwork implements IPoliticalNetwork
         for (Candidate eliminated:recentlyEliminatedList)
         {    
             recentlyEliminated.put(eliminated.identifier, eliminated);
-            eliminated.status = Candidate.ST_BEING_ELIMINATED;  
-            // temporary status to separate the recently eliminated candidates from other eliminated candidates
-            // what helps during network updates
-        }    
-        removeFromNeighborSets(recentlyEliminated);               
-        for (Candidate eliminated:recentlyEliminatedList)
-        {    
-            //eliminatedCandidates.put(eliminated.identifier, eliminated);
-            eliminated.status = Candidate.ST_ELIMINATED;        // set the permanent status of the candidate
+            eliminated.status = Candidate.ST_ELIMINATED;  
             remainingCandidates.remove(eliminated.identifier);
-            if (definitionListener!=null)
-                definitionListener.registerDefinition(eliminated, false);
-            
-            //System.out.println("eliminated votes "+eliminado.numberOfCurrentVotes+"   currentQuota "+currentQuota);
-        }                
+        }    
+        updateNetworkRemovingFromNeighborSets(recentlyEliminated);               
         transferVotesAndUpdateQuota(recentlyEliminatedList);                    
         
         // since eliminated candidates keep zero votes, future transfers originated on them
@@ -411,24 +387,18 @@ public class PoliticalNetwork implements IPoliticalNetwork
     {
         for (Candidate cc:candidates.valueCollection())
         {
-            if (cc.status!=Candidate.ST_BEING_ELIMINATED && cc.currentNeighbors!=null && cc.currentNeighbors.containsKey(c.getIdentifier()))
+            if ( (cc.status!=Candidate.ST_ELIMINATED ) && cc.currentNeighbors!=null && cc.currentNeighbors.containsKey(c.getIdentifier()))
                 throw new RuntimeException("Removed Candidate in neighbor set");
         }    
     }        
           
-    private void removeFromNeighborSets(HashMap<Integer,Candidate> recemDefinidos)
+    private void updateNetworkRemovingFromNeighborSets(HashMap<Integer,Candidate> recentlyDefined)
     {
-        for (Candidate c:recemDefinidos.values())
+        for (Candidate c:recentlyDefined.values())
         {    
               removeFromNeighborSets(c);
               checkAbsenceInNeighborSets(c);
         }
-    }        
-    
-    public void removeFromAllNeighborSets(int identifier)
-    {
-        Candidate c= candidates.get(identifier);
-        removeFromNeighborSets(c);
     }        
 
     private void removeFromNeighborSets(Candidate c)
@@ -710,8 +680,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
             for (Candidate c:candidates.valueCollection())
                 if (
                         c.status==Candidate.ST_ELECTED || 
-                        c.status==Candidate.ST_ELIMINATED  ||
-                        c.status==Candidate.ST_BEING_ELIMINATED 
+                        c.status==Candidate.ST_ELIMINATED  
                    )
                    sourceCandidates.put(c.identifier, c); 
           
@@ -734,8 +703,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
             for (Candidate c:candidates.valueCollection())
                 if (
                         c.status==Candidate.ST_ELECTED || 
-                        c.status==Candidate.ST_ELIMINATED  ||
-                        c.status==Candidate.ST_BEING_ELIMINATED 
+                        c.status==Candidate.ST_ELIMINATED  
                    )
                    sourceCandidates.put(c.identifier, c);           
           }        
