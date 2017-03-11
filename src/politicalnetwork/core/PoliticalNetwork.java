@@ -1,10 +1,10 @@
 package politicalnetwork.core;
 
+import gnu.trove.map.hash.THashMap;
 import gnu.trove.map.hash.TIntObjectHashMap;
+import gnu.trove.set.hash.THashSet;
 import politicalnetwork.rationalnumber.RationalNumber;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 
@@ -224,19 +224,35 @@ public class PoliticalNetwork implements IPoliticalNetwork
         electedCandidates = new TIntObjectHashMap();             // none are elected
         currentQuota =  originalValidNumberOfVotes.divide(numberOfSeats);        
     }
-            
 
-    private void identifyElectedAndTransferVotes()
+    public void defineStatusOfArbitraryCandidates(List<Integer> eliminated,List<Integer> elected)
     {
-        HashMap<Integer,Candidate> recentlyElected = identifyAndMarkRecentlyElected();
-        while (!recentlyElected.isEmpty())
-        {            
-            //updateNetworkRemovingFromNeighborSets(recentlyElected);                        
-            transferVotesAndUpdateQuota(recentlyElected,new ArrayList());                        
-            recentlyElected = identifyAndMarkRecentlyElected(); // more candidates can be elected due to vote tranfers and reductions in the current currentQuota
-        }    
+        if (currentQuota==null)
+            prepareToProcess(); // when this method is called for the first time, the network needs to be prepared.
+        
+        THashMap<Integer,Candidate> defined = new THashMap();
+        for(Integer candId:eliminated)
+        {   
+            Candidate c = candidates.get(candId);
+            defined.put(candId, c);
+            c.status = Candidate.ST_ELIMINATED;  
+        }
+        for(Integer candId:elected)
+        {   
+            Candidate c = candidates.get(candId);
+            defined.put(candId, c);
+            electedCandidates.put(c.identifier, c);
+            c.status = Candidate.ST_ELECTED;  
+        }
+        transferVotesAndUpdateQuota(defined);
+        for(Integer candId:eliminated)
+        {    
+           Candidate c = candidates.get(candId); 
+           c.currentNeighbors = null;                        
+        }
     }        
     
+
     
     public void processElection()
     {
@@ -258,84 +274,60 @@ public class PoliticalNetwork implements IPoliticalNetwork
             throw new RuntimeException("Number of elected candidates does not match the number of seats "+electedCandidates.size() + " <> " + numberOfSeats.doubleValue());
     }        
     
-    
-    private HashMap<Integer,Candidate> identifyAndMarkRecentlyElected()
+    private void identifyElectedAndTransferVotes()
     {
-        boolean last = remainingCandidates.size() + electedCandidates.size() == numberOfSeats.doubleValue(); 
-        HashMap<Integer,Candidate> recentlyElected = new HashMap();
-        for (Iterator<Candidate> i=remainingCandidates.valueCollection().iterator(); i.hasNext(); )
+        THashMap<Integer,Candidate> recentlyElected = identifyRecentlyElected();
+        while (!recentlyElected.isEmpty())
+        {            
+            for (Candidate c:recentlyElected.values())
+            {
+                    electedCandidates.put(c.identifier, c);
+                    remainingCandidates.remove(c.identifier);
+                    c.status = Candidate.ST_ELECTED;
+                    if (definitionListener!=null)
+                        definitionListener.registerDefinition(c, true);                            
+            }
+            
+            transferVotesAndUpdateQuota(recentlyElected);                        
+            recentlyElected = identifyRecentlyElected(); // more candidates can be elected due to vote tranfers and reductions in the current currentQuota
+        }    
+    }        
+    
+    
+    private THashMap<Integer,Candidate> identifyRecentlyElected()
+    {
+        
+        THashMap<Integer,Candidate> recentlyElected = new THashMap();
+        for (Candidate c: remainingCandidates.valueCollection())
         {
-            Candidate c = i.next();
             if (c.numberOfCurrentVotes.compareTo(currentQuota) >= 0)
-            {    
                 recentlyElected.put(c.identifier,c);
-                electedCandidates.put(c.identifier, c);
-                c.status = Candidate.ST_ELECTED;
-                i.remove();
-                if (definitionListener!=null)
-                    definitionListener.registerDefinition(c, true);                
-            }    
         }    
         if (recentlyElected.isEmpty() && remainingCandidates.size() + electedCandidates.size() == numberOfSeats.doubleValue())
         {
             // compensates rounding errors using Corollary 7
-            for (Iterator<Candidate> i=remainingCandidates.valueCollection().iterator(); i.hasNext(); )
+            for (Candidate c: remainingCandidates.valueCollection())
             {
-                Candidate c = i.next();
-                if (last && !numberFactory.isClose(c.numberOfCurrentVotes, currentQuota))
+                if (!numberFactory.isClose(c.numberOfCurrentVotes, currentQuota))
                     throw new RuntimeException("Last candidates don't have a number of votes equal to the quota");
                 recentlyElected.put(c.identifier,c);
-                electedCandidates.put(c.identifier, c);
-                c.status = Candidate.ST_ELECTED;
-                i.remove();
-                if (definitionListener!=null)
-                    definitionListener.registerDefinition(c, true);
             }                            
         }    
         
         return recentlyElected;        
     }        
-            
-    
 
-    public void defineStatusOfArbitraryCandidates(List<Integer> eliminated,List<Integer> elected)
-    {
-        if (currentQuota==null)
-            prepareToProcess(); // when this method is called for the first time, the network needs to be prepared.
-        HashMap<Integer,Candidate> defined = new HashMap();
-        ArrayList<Candidate> recentlyEliminated = new ArrayList();
-        for(Integer candId:eliminated)
-        {   
-            Candidate c = candidates.get(candId);
-            defined.put(candId, c);
-            c.status = Candidate.ST_ELIMINATED;  
-            recentlyEliminated.add(c);
-        }
-        for(Integer candId:elected)
-        {   
-            Candidate c = candidates.get(candId);
-            defined.put(candId, c);
-            electedCandidates.put(c.identifier, c);
-            c.status = Candidate.ST_ELECTED;  
-        }
-        transferVotesAndUpdateQuota(defined,recentlyEliminated);
-        for(Integer candId:eliminated)
-        {    
-           Candidate c = candidates.get(candId); 
-           c.currentNeighbors = null;                        
-        }
-    }        
     
     private void eliminateCandidatesAndTranferVotes(List<Candidate> recentlyEliminatedList)
     {
-        HashMap<Integer,Candidate> recentlyEliminated = new HashMap();
+        THashMap<Integer,Candidate> recentlyEliminated = new THashMap();
         for (Candidate eliminated:recentlyEliminatedList)
         {    
             recentlyEliminated.put(eliminated.identifier, eliminated);
             eliminated.status = Candidate.ST_ELIMINATED;  
             remainingCandidates.remove(eliminated.identifier);
         }    
-        transferVotesAndUpdateQuota(recentlyEliminated,recentlyEliminatedList);                    
+        transferVotesAndUpdateQuota(recentlyEliminated);                    
         
         // since eliminated candidates keep zero votes, future transfers originated on them
         // would only be a waste of time, so we clear their neighbor sets.
@@ -380,7 +372,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
         }    
     }        
           
-    private void updateNetworkRemovingFromNeighborSets(HashMap<Integer,Candidate> recentlyDefined)
+    private void updateNetworkRemovingFromNeighborSets(THashMap<Integer,Candidate> recentlyDefined)
     {
         for (Candidate c:recentlyDefined.values())
         {    
@@ -423,7 +415,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
     int removeState;
     
     static final int RS_WAIT = 0;             // nothing is happening in the removal threads
-    static final int RS_NEIGHBORS = 1;         // threads are removing a candidate from neighbor sets
+    static final int RS_NEIGHBORS = 1;        // threads are removing a candidate from neighbor sets
     static final int RS_DONE = 3;             // election is over, threads have ended or are about to end
     static class RemoveEntry
     {        
@@ -501,7 +493,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
     private void removeFromNeighborsets(Candidate candidateToBeRemoved,Candidate candidateFromWhereToRemove)
     {
         // Note that only the neighborset of the candidateFromWhereToRemove is submitted to any changes.
-        // This means that this method can be called several time in parallel, as long as the vakue of
+        // This means that this method can be called several times in parallel, as long as the value of
         // candidateFromWhereToRemove is different for each call
         
         if (!candidateFromWhereToRemove.currentNeighbors.containsKey(candidateToBeRemoved.identifier))
@@ -550,16 +542,15 @@ public class PoliticalNetwork implements IPoliticalNetwork
      * Transfer votes. Vote discards occur through transfers to the virtual discard candiate.
      * 
      * @param recentlyDefined   The candidates that have just had their stated defined as elected or eliminated.
-     * @param recentlyEliminated 
      */
-    private void transferVotesAndUpdateQuota(HashMap<Integer,Candidate> recentlyDefined,List<Candidate> recaentlyEliminated)
+    private void transferVotesAndUpdateQuota(THashMap<Integer,Candidate> recentlyDefined)
     {     
         updateNetworkRemovingFromNeighborSets(recentlyDefined);   
-        
+
+        //If required copies the data that is needed to iteractive convergence tests.
+        // the copy is done before the usual tranfers, so that the numbers of votes are the ones before them.
         TemporaryDataForTranfersUsingOriginalStructure dt = checkConvergenceAndMakeExtraConsistencyTests ? new TemporaryDataForTranfersUsingOriginalStructure(): null;       
-        
-        
-         // The parameter recentlyEliminated avoids having to loop over all eliminated candidates to find which ones still have votes.
+                
         RationalNumber sumVP = numberFactory.valueOf(0, 1);
         for (Candidate c:recentlyDefined.values())  //recentlyEliminated)
         {    
@@ -600,24 +591,20 @@ public class PoliticalNetwork implements IPoliticalNetwork
             // if we set the currentQuota to zero, all elected candidates would discard all votes
             // we prefer to keep the old currentQuota.
             newQuota = currentQuota;            
-        }    
-        
-        transferVotesAccordingToQuota(newQuota,recentlyDefined); //recentlyEliminated);
-        
+        }            
+        transferVotesAccordingToQuota(newQuota,recentlyDefined);         
         currentQuota = newQuota;
-
         
+        // If required, after vote tranfers, perfoms the same tranfers in an iteractive way and check if votes converge to the expected values
         if (dt!=null)
            transferVotesIteractivelyUsingOriginalStructure(dt);
-        
-        
     }    
         
         
-    private void transferVotesAccordingToQuota(RationalNumber newQuota, HashMap<Integer,Candidate> recentlyDefined)//List<Candidate> recentlyEliminated)
+    private void transferVotesAccordingToQuota(RationalNumber newQuota, THashMap<Integer,Candidate> recentlyDefined)
     {        
-        HashSet<Candidate> candidatesWithTransferrableVotes = new HashSet();
-        //candidatesWithTransferrableVotes.addAll(recentlyEliminated);
+        THashSet<Candidate> candidatesWithTransferrableVotes = new THashSet();
+
         for (Candidate c:recentlyDefined.values())
             if (c.status==Candidate.ST_ELIMINATED)
                candidatesWithTransferrableVotes.add(c);
@@ -641,7 +628,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
 
     
     /**
-     * This class conatins data that allows iteractive vote transfers using the unmodified political network.
+     * This class contains data that allows iteractive vote transfers using the unmodified political network.
      */
     class TemporaryDataForTranfersUsingOriginalStructure
     {
@@ -698,7 +685,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
     }
     /**
      * This method is used to check if an iteractive vote transfer process using the original structure would indeed coverge to
-     * the results calculated usign the modified structure.
+     * the exact results calculated usign the modified structure.
      * @param dt A structure containing a copy of the original data
      */
     private void transferVotesIteractivelyUsingOriginalStructure(TemporaryDataForTranfersUsingOriginalStructure dto)
