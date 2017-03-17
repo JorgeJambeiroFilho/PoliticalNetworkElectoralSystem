@@ -5,11 +5,11 @@ import gnu.trove.map.hash.TIntObjectHashMap;
 import gnu.trove.set.hash.THashSet;
 import politicalnetwork.rationalnumber.RationalNumber;
 import java.util.ArrayList;
-import java.util.Iterator;
+import java.util.Collections;
 import java.util.List;
 
 /**
- * This class implementats the political network election system.
+ * This class implements the political network election system.
  * 
  * 
  * @author Removed for blind review
@@ -62,8 +62,9 @@ public class PoliticalNetwork implements IPoliticalNetwork
     {
         /**
          * Registers that a candidate was elected or eliminated by the election algorithm.
-         * This allows external monitoring of the election and thus to helps to debug code, for example,
-         * checking for violations of solid coalition guarantees.
+         * This allows external monitoring of the election and thus helps to debug code, for example,
+         * checking for violations of solid coalition guarantees. This also allows the use of progress 
+         * bars.
          * 
          * @param candidate
          * @param elected True if the candidate was elected. False if eliminated.
@@ -190,7 +191,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
         this.numberOfSeats = numberFactory.valueOf(numeroDeCadeiras, 1);
     }        
     
-    public void checkConsistency(boolean areTransfersComplete)
+    public void checkConsistency(boolean haveAllElectedCandidatesBeenDetected)
     {
         if (!checkConvergenceAndMakeExtraConsistencyTests)
             return;
@@ -201,7 +202,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
         RationalNumber  currentNumberOfValidVotesFromSum = zero;        
         for (Candidate c: candidates.valueCollection())
         {    
-            c.checkConsistency(currentQuota,numberFactory,areTransfersComplete);
+            c.checkConsistency(currentQuota,numberFactory,haveAllElectedCandidatesBeenDetected);
             currentNumberOfValidVotesFromSum = currentNumberOfValidVotesFromSum.plus(c.numberOfCurrentVotes);
         }
         if (!numberFactory.isClose(currentNumberOfValidVotesFromSum,currentNumberOfValidVotesFromDiscards))
@@ -262,7 +263,8 @@ public class PoliticalNetwork implements IPoliticalNetwork
         while (!remainingCandidates.isEmpty())
         {
             
-            identifyElectedAndTransferVotes();
+            if (identifyElectedAndTransferVotes())
+                return;  // special condition for degenarated elections found
             checkConsistency(true);
             if (!remainingCandidates.isEmpty())            
             {
@@ -274,12 +276,14 @@ public class PoliticalNetwork implements IPoliticalNetwork
             throw new RuntimeException("Number of elected candidates does not match the number of seats "+electedCandidates.size() + " <> " + numberOfSeats.doubleValue());
     }        
     
-    private void identifyElectedAndTransferVotes()
+    // returns true if a termination conditions has been reached
+    private boolean identifyElectedAndTransferVotes()
     {
-        THashMap<Integer,Candidate> recentlyElected = identifyRecentlyElected();
-        while (!recentlyElected.isEmpty())
+        
+        RecentlyElected recentlyElected = identifyRecentlyElected();
+        while (!recentlyElected.candidates.isEmpty())
         {            
-            for (Candidate c:recentlyElected.values())
+            for (Candidate c:recentlyElected.candidates.values())
             {
                     electedCandidates.put(c.identifier, c);
                     remainingCandidates.remove(c.identifier);
@@ -287,25 +291,87 @@ public class PoliticalNetwork implements IPoliticalNetwork
                     if (definitionListener!=null)
                         definitionListener.registerDefinition(c, true);                            
             }
-            
-            transferVotesAndUpdateQuota(recentlyElected);                        
+            if (recentlyElected.exitElection)
+                return true;
+            transferVotesAndUpdateQuota(recentlyElected.candidates);                        
             recentlyElected = identifyRecentlyElected(); // more candidates can be elected due to vote tranfers and reductions in the current currentQuota
         }    
+        return false;
     }        
     
-    
-    private THashMap<Integer,Candidate> identifyRecentlyElected()
+    // this class helps to sort candidates with zero votes according to a tiebreaker criterium
+    class ZeroVotesKey implements Comparable<ZeroVotesKey>
     {
-        
+        Candidate c;
+        public ZeroVotesKey(Candidate c)
+        {
+            this.c = c;
+        }        
+        @Override
+        public int compareTo(ZeroVotesKey o)
+        {
+            return tieBreaker.compare(c.identifier, o.c.identifier);
+        }        
+    }
+    
+    static class RecentlyElected
+    {
+        THashMap<Integer,Candidate> candidates;
+        boolean exitElection;
+        public RecentlyElected(THashMap<Integer, Candidate> candidates, boolean exitElection)
+        {
+            this.candidates = candidates;
+            this.exitElection = exitElection;
+        }        
+    }
+    
+    private RecentlyElected identifyRecentlyElected()
+    {
         THashMap<Integer,Candidate> recentlyElected = new THashMap();
+        
+        
+        // elects some candidates in the usual way
         for (Candidate c: remainingCandidates.valueCollection())
         {
             if (c.numberOfCurrentVotes.compareTo(currentQuota) >= 0)
                 recentlyElected.put(c.identifier,c);
         }    
+
+        // checks for special termination conditions related to trully degenerated elections, 
+        // where candidates with zero votes may be elected and elects some candidates with zero votes if necessary        
+        RationalNumber totalVotesInRemaningCandidates = zero;
+        for (Candidate c:remainingCandidates.valueCollection())
+            totalVotesInRemaningCandidates = totalVotesInRemaningCandidates.plus(c.getNumberOfCurrentVotes());
+        boolean noTransfersFromElectedCandidates =  true;
+        for (Candidate c:electedCandidates.valueCollection())
+        {
+            NeighborhoodRelation rDiscard = c.currentNeighbors.get(virtualDiscardCandidate.identifier);
+            RationalNumber p = rDiscard==null ? zero : rDiscard.transferPercentage;
+            if (!p.equals(one))
+               noTransfersFromElectedCandidates =  false; 
+        }            
+        if (
+                totalVotesInRemaningCandidates.equals(zero) && noTransfersFromElectedCandidates ||
+                totalVotesInRemaningCandidates.equals(zero) && remainingCandidates.size() + electedCandidates.size() == numberOfSeats.doubleValue()
+           )
+        {
+            ArrayList<ZeroVotesKey> zeroOrder = new ArrayList();
+            for (Candidate c: remainingCandidates.valueCollection())
+               zeroOrder.add(new ZeroVotesKey(c));
+            Collections.sort(zeroOrder);
+            int l = (int)numberOfSeats.doubleValue() - electedCandidates.size();
+            for (int t=0; t<l; t++)
+            {
+                Candidate c = zeroOrder.get(t).c;
+                recentlyElected.put(c.identifier,c);
+                return new RecentlyElected(recentlyElected,true);        
+            }                
+        }            
+        
+        
+        // elects some candidates using Corollary 6 to compensate rounding error 
         if (recentlyElected.isEmpty() && remainingCandidates.size() + electedCandidates.size() == numberOfSeats.doubleValue())
         {
-            // compensates rounding errors using Corollary 7
             for (Candidate c: remainingCandidates.valueCollection())
             {
                 if (!numberFactory.isClose(c.numberOfCurrentVotes, currentQuota))
@@ -314,7 +380,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
             }                            
         }    
         
-        return recentlyElected;        
+        return new RecentlyElected(recentlyElected,false);        
     }        
 
     
@@ -326,6 +392,8 @@ public class PoliticalNetwork implements IPoliticalNetwork
             recentlyEliminated.put(eliminated.identifier, eliminated);
             eliminated.status = Candidate.ST_ELIMINATED;  
             remainingCandidates.remove(eliminated.identifier);
+            if (definitionListener!=null)
+                definitionListener.registerDefinition(eliminated, true);                                        
         }    
         transferVotesAndUpdateQuota(recentlyEliminated);                    
         

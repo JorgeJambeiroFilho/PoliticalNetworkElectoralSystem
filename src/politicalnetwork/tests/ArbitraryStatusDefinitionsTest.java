@@ -1,7 +1,3 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
 package politicalnetwork.tests;
 
 import java.util.ArrayList;
@@ -15,12 +11,17 @@ import politicalnetwork.rationalnumber.InfinitePrecisionRationalNumber;
 import politicalnetwork.core.Candidate;
 
 /**
- *
- * @author R
+ * This class tests the insesibility of the political network election system to the order of 
+ * status definitions (elections and eliminations).
+ * 
+ * 
+ * @author Removed for blind review
  */
 public class ArbitraryStatusDefinitionsTest
 {
-    
+    /**
+     *  This class represents a group of status definitions that are to be perfomed simultaneously
+     */
     static class RandomStatusDefinitions
     {
         List<Integer> elected;
@@ -34,23 +35,27 @@ public class ArbitraryStatusDefinitionsTest
     
     static void applyRandomStatusDefinitions(Random rand,int numCandidates,IPoliticalNetwork politicalNetwork,int []defCandidatesOri,boolean defStatusOri[])
     {
+        // Shuffles the lists of definitions, keeping them in sync.
         int[] defCandidatesInds = getRandomIntsWithoutRepetitions(defCandidatesOri.length,defCandidatesOri.length, rand);
         int[] defCandidates = new int[defCandidatesOri.length];
-        boolean[] defStatus = new boolean[defStatusOri.length];
-        
+        boolean[] defStatus = new boolean[defStatusOri.length];        
         for (int t=0; t<defCandidates.length; t++)
         {    
            defCandidates[t] = defCandidatesOri[defCandidatesInds[t]-1];
            defStatus[t] = defStatusOri[defCandidatesInds[t]-1];
         }
+        
         RandomStatusDefinitions lastDef = new RandomStatusDefinitions();
         int numDone = 0;        
         while (numDone < defCandidates.length)
         {
-            if (rand.nextInt(4)==0)
+            // arbitrates points to break the list of definitions
+            // any definitions between two break points are performed simultaneously
+            if (rand.nextInt(10)==0)
             {                
                 // apply list of simultaneous definitions
                 politicalNetwork.defineStatusOfArbitraryCandidates(lastDef.eliminated, lastDef.elected);
+                // start a new list
                 lastDef = new RandomStatusDefinitions();
             }
             if (defStatus[numDone])
@@ -59,6 +64,7 @@ public class ArbitraryStatusDefinitionsTest
                 lastDef.eliminated.add(defCandidates[numDone]);
             numDone++;
         }    
+        // apply last list
         politicalNetwork.defineStatusOfArbitraryCandidates(lastDef.eliminated, lastDef.elected);
     }        
     
@@ -67,9 +73,9 @@ public class ArbitraryStatusDefinitionsTest
         int numTh = Runtime.getRuntime().availableProcessors();
         Random rand = new Random(seed);
         int numCandidates = 250;
-        int maxNeighbors = rand.nextInt(10);        
+        int maxNeighbors = rand.nextInt(30);        
         int maxVotesPerCand = 10000; //00+rand.nextInt(10);
-        int numDefCand = rand.nextInt(numCandidates / 50);
+        int numDefCand = rand.nextInt(numCandidates / 5);
         int numSeats = 1+rand.nextInt(numCandidates);
         
         
@@ -81,7 +87,7 @@ public class ArbitraryStatusDefinitionsTest
         
         try
         {    
- 
+            // creates two identical networks
             for (int candId=1; candId<=numCandidates; candId++)   
             {    
                 politicalNetwork1.addCandidate(candId);
@@ -119,29 +125,29 @@ public class ArbitraryStatusDefinitionsTest
                if (usedPercentage!=100 && numNeighbors!=0)
                    throw new RuntimeException("Percentages don't sum 100%");
             }        
-            
-            
             politicalNetwork1.setNumberOfSeats(numSeats);
             politicalNetwork2.setNumberOfSeats(numSeats);
 
-            //politicalNetwork1.prepareToProcess();
-            //politicalNetwork2.prepareToProcess();
             
-            
+            // chooses, randomly, candidates to have their status defined              
             int[] defCandidates = getRandomIntsWithoutRepetitions(numCandidates,numDefCand,rand);
-            boolean[] status = new boolean[numDefCand];
+            boolean[] status = new boolean[numDefCand];            
             
+            // calculates the initial quota
             RationalNumber q =  infFact.valueOf(numValidVotes, numSeats); 
             for (int t=0; t<numDefCand; t++)
             {    
                 Candidate c = politicalNetwork1.getCandidate(defCandidates[t]);
-                if (c==null)
-                    throw new RuntimeException("Candidate not found");
+                if (c==null) throw new RuntimeException("Candidate not found");
                 RationalNumber v = c.getNumberOfIndividualVotes(); 
+                
+                // We cannot define the status of a candidate that has less votes than the quota to be elected, without causing inconsistencies
+                // so we only define as elected those which are guaranteed from the beggining to be above the current quota.
+                // Any candidate can be eliminated without causing inconsistencies, so we defined all the other to be eliminated.
                 status[t] = v.compareTo(q) >= 0;
             }
             
-            
+            // applies the definitions to both networks, changing the order and the slices that contains simultaneous definitions.
             applyRandomStatusDefinitions(rand,numCandidates,politicalNetwork1,defCandidates,status);
             applyRandomStatusDefinitions(rand,numCandidates,politicalNetwork2,defCandidates,status);
 
@@ -171,15 +177,10 @@ public class ArbitraryStatusDefinitionsTest
     }
     public static void main(String argv[])
     {
-        Random r = new Random(7);
-        
-        ArbitraryStatusDefinitionsTest.applySameRandomStatusDefinitionsInDifferentOrders(-1850488227);
-        
+        Random r = new Random(8);
         
         int max = 100000;
         int numFails = 0;
-        
-        
         for (int t=0; t<max; t++)
         {    
             int seed = r.nextInt();
