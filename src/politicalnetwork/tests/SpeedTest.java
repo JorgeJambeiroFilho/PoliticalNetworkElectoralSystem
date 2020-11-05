@@ -1,18 +1,10 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
 package politicalnetwork.tests;
 
-import gnu.trove.map.hash.THashMap;
-import gnu.trove.map.hash.TIntObjectHashMap;
-import java.util.Map.Entry;
 import politicalnetwork.core.PoliticalNetwork;
 import politicalnetwork.core.IPoliticalNetwork;
 import politicalnetwork.rationalnumber.DoublePrecisionRationalNumber;
 import politicalnetwork.rationalnumber.RationalNumber;
 import java.util.Random;
-import java.util.TreeMap;
 import politicalnetwork.core.Candidate;
 import politicalnetwork.core.PoliticalNetwork.DefinitionListener;
 import politicalnetwork.core.PoliticalNetwork.IDTierBreaker;
@@ -20,7 +12,6 @@ import politicalnetwork.rationalnumber.InfinitePrecisionRationalNumber;
 
 /**
  *
- * @author jesjf22
  */
 public class SpeedTest
 {
@@ -28,7 +19,7 @@ public class SpeedTest
     {
         int numRegs = 0;
         @Override
-        public void registerDefinition(Candidate candidate, boolean elected)
+        public void registerDefinition(Candidate candidate, boolean elected,RationalNumber currentQuota)
         {
             // virtual candidates don't count here
             if (candidate.isVirtual())

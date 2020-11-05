@@ -14,8 +14,6 @@ import politicalnetwork.core.Candidate;
  * This class tests the insesibility of the political network election system to the order of 
  * status definitions (elections and eliminations).
  * 
- * 
- * @author Removed for blind review
  */
 public class ArbitraryStatusDefinitionsTest
 {
@@ -177,9 +175,8 @@ public class ArbitraryStatusDefinitionsTest
     }
     public static void main(String argv[])
     {
-        Random r = new Random(8);
-        
-        int max = 100000;
+        Random r = new Random(9);        
+        int max = 10000;
         int numFails = 0;
         for (int t=0; t<max; t++)
         {    
@@ -200,8 +197,7 @@ public class ArbitraryStatusDefinitionsTest
                 System.out.println("\n"+t+" random status definitions already run. Fails = "+numFails);                        
             System.out.print(".");            
         }    
-        System.out.println("\n"+max+" random status definitions already run. Fails = "+numFails);                        
-        
+        System.out.println("\n"+max+" random status definitions already run. Fails = "+numFails);                                
     }        
     
 }

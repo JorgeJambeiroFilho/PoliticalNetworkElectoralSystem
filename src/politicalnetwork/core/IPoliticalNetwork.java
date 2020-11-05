@@ -103,6 +103,7 @@ public interface IPoliticalNetwork
      */
     void close();
 
+    public void setDefinitionListener(PoliticalNetwork.DefinitionListener definitionListener);
     
     
 }

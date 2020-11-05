@@ -6,6 +6,7 @@ import gnu.trove.set.hash.THashSet;
 import politicalnetwork.rationalnumber.RationalNumber;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -19,7 +20,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
     // Data related to the original structure of the political network
     private RationalNumber originalValidNumberOfVotes;
     private RationalNumber numberOfSeats;    
-    final private TIntObjectHashMap<Candidate> candidates;
+    final protected TIntObjectHashMap<Candidate> candidates;
     
     // Data related to the status of the political netowork
     private TIntObjectHashMap<Candidate> remainingCandidates;
@@ -28,9 +29,9 @@ public class PoliticalNetwork implements IPoliticalNetwork
     private RationalNumber currentQuota;
 
     // Helper variables to handle rational numbers
-    final private RationalNumber.Factory numberFactory;  // To allow numbers to be created using the correct class
-    final private RationalNumber zero; // useful constant
-    final private RationalNumber one;  // useful constant
+    final protected RationalNumber.Factory numberFactory;  // To allow numbers to be created using the correct class
+    final protected  RationalNumber zero; // useful constant
+    final protected  RationalNumber one;  // useful constant
     
     // True if this the election should be accompanied by convergence tests and extra consistency tests
     final boolean checkConvergenceAndMakeExtraConsistencyTests;
@@ -68,12 +69,20 @@ public class PoliticalNetwork implements IPoliticalNetwork
          * 
          * @param candidate
          * @param elected True if the candidate was elected. False if eliminated.
+         * @param currentQuota The value of the current quota at the moment of the definition
          */
-        void registerDefinition(Candidate candidate, boolean elected);
+        void registerDefinition(Candidate candidate, boolean elected,RationalNumber currentQuota);
     }
     
     final TieBreaker tieBreaker;
-    final DefinitionListener definitionListener;
+    DefinitionListener definitionListener;
+
+    public void setDefinitionListener(DefinitionListener definitionListener)
+    {
+        this.definitionListener = definitionListener;
+    }
+
+    
     
     public String toString()
     {
@@ -108,8 +117,11 @@ public class PoliticalNetwork implements IPoliticalNetwork
     {
         return electedCandidates;
     }
-    
-        
+    public int getNumberOfSeats()    
+    {
+        return (int)numberOfSeats.doubleValue();
+    }
+            
     /**
      * Creates an empty political network.
      * @param numberFactory Allows numbers to be created using the correct class
@@ -140,7 +152,9 @@ public class PoliticalNetwork implements IPoliticalNetwork
         // Creates threads to perform edge removals in parallel
         for (int t=0; t<numTh; t++)
             new Thread(new Remover(t),"DoRemoves "+name+" "+t).start();        
-    }        
+    } 
+    
+    
     public synchronized void close()
     {
         // This ends the remover threads
@@ -159,6 +173,10 @@ public class PoliticalNetwork implements IPoliticalNetwork
     {
         return candidates.get(identifier);
     }        
+    public TIntObjectHashMap<Candidate> getCandidates()
+    {
+        return candidates;
+    }    
     public void addCandidate(int identifier)
     {
          candidates.put(identifier, new Candidate(identifier,false));    
@@ -212,7 +230,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
     /**
      * Sets the initial state of the network. Should be called after all parameters have been set.
      */
-    private void prepareToProcess()
+    public void prepareToProcess()
     {
         originalValidNumberOfVotes = zero;
         for (Candidate c:candidates.valueCollection())
@@ -258,13 +276,12 @@ public class PoliticalNetwork implements IPoliticalNetwork
     public void processElection()
     {
         prepareToProcess();        
-        eliminateVirtualCandidatesAndTranferVotes();
+        eliminateVirtualCandidatesAndTranferVotes();            
         checkConsistency(false);
         while (!remainingCandidates.isEmpty())
-        {
-            
+        {            
             if (identifyElectedAndTransferVotes())
-                return;  // special condition for degenarated elections found
+                return;  // special condition for degenerated elections found
             checkConsistency(true);
             if (!remainingCandidates.isEmpty())            
             {
@@ -276,98 +293,91 @@ public class PoliticalNetwork implements IPoliticalNetwork
             throw new RuntimeException("Number of elected candidates does not match the number of seats "+electedCandidates.size() + " <> " + numberOfSeats.doubleValue());
     }        
     
-    // returns true if a termination conditions has been reached
+    // returns true if a special termination condition has been reached
     private boolean identifyElectedAndTransferVotes()
     {
         
-        RecentlyElected recentlyElected = identifyRecentlyElected();
-        while (!recentlyElected.candidates.isEmpty())
-        {            
-            for (Candidate c:recentlyElected.candidates.values())
+        THashMap<Integer,Candidate> recentlyElected = identifyRecentlyElected();
+        while (!recentlyElected.isEmpty())
+        {                  
+            for (Candidate c:recentlyElected.values())
             {
                     electedCandidates.put(c.identifier, c);
                     remainingCandidates.remove(c.identifier);
                     c.status = Candidate.ST_ELECTED;
                     if (definitionListener!=null)
-                        definitionListener.registerDefinition(c, true);                            
-            }
-            if (recentlyElected.exitElection)
+                        definitionListener.registerDefinition(c, true,currentQuota);                            
+            }          
+            transferVotesAndUpdateQuota(recentlyElected);                        
+            if (
+                    currentQuota.equals(zero) || 
+                    electedCandidates.size()==numberOfSeats.doubleValue() && !remainingCandidates.isEmpty()
+               )
+            {
+                // In truly degenrated elections where candidates with zero votes
+                // needs to be elected for the lack of alternatives
+                // the current quota can became zero, or the number all seats may be filled while there are remaining candidates
+                terminateSpecially();
                 return true;
-            transferVotesAndUpdateQuota(recentlyElected.candidates);                        
+            }    
             recentlyElected = identifyRecentlyElected(); // more candidates can be elected due to vote tranfers and reductions in the current currentQuota
         }    
         return false;
     }        
     
-    // this class helps to sort candidates with zero votes according to a tiebreaker criterium
-    class ZeroVotesKey implements Comparable<ZeroVotesKey>
+    class TieBreakComparator implements Comparator<Candidate>
     {
-        Candidate c;
-        public ZeroVotesKey(Candidate c)
-        {
-            this.c = c;
-        }        
         @Override
-        public int compareTo(ZeroVotesKey o)
+        public int compare(Candidate c1, Candidate c2)
         {
-            return tieBreaker.compare(c.identifier, o.c.identifier);
+            return tieBreaker.compare(c1.identifier, c2.identifier);
         }        
     }
-    
-    static class RecentlyElected
+    void terminateSpecially()            
     {
-        THashMap<Integer,Candidate> candidates;
-        boolean exitElection;
-        public RecentlyElected(THashMap<Integer, Candidate> candidates, boolean exitElection)
+        for (Candidate c:remainingCandidates.valueCollection())
+            if (!c.getNumberOfCurrentVotes().isZero())
+                throw new RuntimeException("Election terminated especially unnecessarily");
+        if (electedCandidates.size()!=numberOfSeats.doubleValue())
+        {    
+            for (Candidate c:electedCandidates.valueCollection())
+            {
+                NeighborhoodRelation rDiscard = c.currentNeighbors.get(virtualDiscardCandidate.identifier);
+                RationalNumber p = rDiscard==null ? zero : rDiscard.transferPercentage;
+                if (!p.equals(one) && !c.numberOfCurrentVotes.isZero())
+                    throw new RuntimeException("Election terminated especially unnecessarily");
+            }
+        }
+        ArrayList<Candidate> zeroOrder = new ArrayList(remainingCandidates.valueCollection());
+        Collections.sort(zeroOrder,new TieBreakComparator());
+        int l = (int)numberOfSeats.doubleValue() - electedCandidates.size();
+        for (int t=0; t<l; t++)
         {
-            this.candidates = candidates;
-            this.exitElection = exitElection;
-        }        
+            Candidate c = zeroOrder.get(t);
+            electedCandidates.put(c.identifier, c);
+            remainingCandidates.remove(c.identifier);
+            c.status = Candidate.ST_ELECTED;
+            if (definitionListener!=null)
+                definitionListener.registerDefinition(c, true,currentQuota);                                                            
+        }                
+        for (int t=l; t<zeroOrder.size(); t++)
+        {
+            Candidate c = zeroOrder.get(t);
+            remainingCandidates.remove(c.identifier);
+            c.status = Candidate.ST_ELIMINATED;
+            if (definitionListener!=null)
+                definitionListener.registerDefinition(c, false,currentQuota);                                                            
+        }                
     }
-    
-    private RecentlyElected identifyRecentlyElected()
+            
+    private THashMap<Integer,Candidate> identifyRecentlyElected()
     {
         THashMap<Integer,Candidate> recentlyElected = new THashMap();
-        
-        
+                
         // elects some candidates in the usual way
         for (Candidate c: remainingCandidates.valueCollection())
-        {
             if (c.numberOfCurrentVotes.compareTo(currentQuota) >= 0)
                 recentlyElected.put(c.identifier,c);
-        }    
-
-        // checks for special termination conditions related to trully degenerated elections, 
-        // where candidates with zero votes may be elected and elects some candidates with zero votes if necessary        
-        RationalNumber totalVotesInRemaningCandidates = zero;
-        for (Candidate c:remainingCandidates.valueCollection())
-            totalVotesInRemaningCandidates = totalVotesInRemaningCandidates.plus(c.getNumberOfCurrentVotes());
-        boolean noTransfersFromElectedCandidates =  true;
-        for (Candidate c:electedCandidates.valueCollection())
-        {
-            NeighborhoodRelation rDiscard = c.currentNeighbors.get(virtualDiscardCandidate.identifier);
-            RationalNumber p = rDiscard==null ? zero : rDiscard.transferPercentage;
-            if (!p.equals(one))
-               noTransfersFromElectedCandidates =  false; 
-        }            
-        if (
-                totalVotesInRemaningCandidates.equals(zero) && noTransfersFromElectedCandidates ||
-                totalVotesInRemaningCandidates.equals(zero) && remainingCandidates.size() + electedCandidates.size() == numberOfSeats.doubleValue()
-           )
-        {
-            ArrayList<ZeroVotesKey> zeroOrder = new ArrayList();
-            for (Candidate c: remainingCandidates.valueCollection())
-               zeroOrder.add(new ZeroVotesKey(c));
-            Collections.sort(zeroOrder);
-            int l = (int)numberOfSeats.doubleValue() - electedCandidates.size();
-            for (int t=0; t<l; t++)
-            {
-                Candidate c = zeroOrder.get(t).c;
-                recentlyElected.put(c.identifier,c);
-                return new RecentlyElected(recentlyElected,true);        
-            }                
-        }            
-        
         
         // elects some candidates using Corollary 6 to compensate rounding error 
         if (recentlyElected.isEmpty() && remainingCandidates.size() + electedCandidates.size() == numberOfSeats.doubleValue())
@@ -378,14 +388,15 @@ public class PoliticalNetwork implements IPoliticalNetwork
                     throw new RuntimeException("Last candidates don't have a number of votes equal to the quota");
                 recentlyElected.put(c.identifier,c);
             }                            
-        }    
-        
-        return new RecentlyElected(recentlyElected,false);        
+        }            
+        return recentlyElected;        
     }        
 
     
     private void eliminateCandidatesAndTranferVotes(List<Candidate> recentlyEliminatedList)
     {
+        if (currentQuota.isZero())
+            throw new RuntimeException("Quota reached zero and termination did not occur");
         THashMap<Integer,Candidate> recentlyEliminated = new THashMap();
         for (Candidate eliminated:recentlyEliminatedList)
         {    
@@ -393,7 +404,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
             eliminated.status = Candidate.ST_ELIMINATED;  
             remainingCandidates.remove(eliminated.identifier);
             if (definitionListener!=null)
-                definitionListener.registerDefinition(eliminated, true);                                        
+                definitionListener.registerDefinition(eliminated, false,currentQuota);                                        
         }    
         transferVotesAndUpdateQuota(recentlyEliminated);                    
         
@@ -610,8 +621,8 @@ public class PoliticalNetwork implements IPoliticalNetwork
      * Transfer votes. Vote discards occur through transfers to the virtual discard candiate.
      * 
      * @param recentlyDefined   The candidates that have just had their stated defined as elected or eliminated.
-     */
-    private void transferVotesAndUpdateQuota(THashMap<Integer,Candidate> recentlyDefined)
+     */    
+    void transferVotesAndUpdateQuota(THashMap<Integer,Candidate> recentlyDefined)
     {     
         updateNetworkRemovingFromNeighborSets(recentlyDefined);   
 
@@ -647,7 +658,15 @@ public class PoliticalNetwork implements IPoliticalNetwork
             throw new RuntimeException("The sum of the percentages of discard of electec candidates is greater than the number of available seats");
 
         if (!remainingCandidates.isEmpty())            
-            newQuota = originalValidNumberOfVotes.minus(virtualDiscardCandidate.numberOfCurrentVotes).minus(sumVP).divide(numberOfSeats.minus(sumP));
+        {
+            if (numberOfSeats.minus(sumP).isZero())
+            {    
+                currentQuota = zero; // the value would be undefined. Puting a zero activates the special termination
+                return;
+            }    
+            else
+                newQuota = originalValidNumberOfVotes.minus(virtualDiscardCandidate.numberOfCurrentVotes).minus(sumVP).divide(numberOfSeats.minus(sumP));
+        }    
         else
         {   
             if ( !numberFactory.isClose(sumP, numberOfSeats))
@@ -659,7 +678,7 @@ public class PoliticalNetwork implements IPoliticalNetwork
             // if we set the currentQuota to zero, all elected candidates would discard all votes
             // we prefer to keep the old currentQuota.
             newQuota = currentQuota;            
-        }            
+        }       
         transferVotesAccordingToQuota(newQuota,recentlyDefined);         
         currentQuota = newQuota;
         

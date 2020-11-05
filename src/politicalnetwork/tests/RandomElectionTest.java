@@ -1,7 +1,3 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
 package politicalnetwork.tests;
 
 import gnu.trove.map.hash.THashMap;
@@ -20,7 +16,6 @@ import politicalnetwork.rationalnumber.InfinitePrecisionRationalNumber;
 
 /**
  *
- * @author jesjf22
  */
 public class RandomElectionTest
 {
@@ -142,7 +137,7 @@ public class RandomElectionTest
                 
         int numRegs = 0;
         @Override
-        public void registerDefinition(Candidate candidate, boolean elected)
+        public void registerDefinition(Candidate candidate, boolean elected,RationalNumber currentQuota)
         {
             // virtual candidates don't count here
             if (candidate.isVirtual())
@@ -361,8 +356,8 @@ public class RandomElectionTest
     }
     public static void main(String argv[])
     {
-        Random r = new Random(14);
-        int max = 100000;
+        Random r = new Random(16);
+        int max = 10000;
         int numFails = 0;
         int numDivergences = 0;
         for (int t=0; t<max; t++)
